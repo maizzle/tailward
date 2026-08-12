@@ -1,0 +1,279 @@
+import { parse as colorParse } from 'culori'
+import type { DesignSystem } from './design-system.ts'
+import { resolveVars, evalCalc, normalizeLength, normalizeValue } from './normalize.ts'
+
+export interface ReverseIndex {
+  /** `prop|normalizedValue` -> shortest Tailwind class producing exactly that declaration. */
+  decls: Map<string, string>
+  /** CSS property -> utility root, for arbitrary length/generic fallbacks (e.g. `padding` -> `p`). */
+  propToRoot: Map<string, string>
+  /** CSS property -> utility root for color-valued utilities (e.g. `color` -> `text`). */
+  colorRoots: Map<string, string>
+  /** Palette token (`red-500`) -> concrete color value from the theme. */
+  palette: Map<string, string>
+  /** Normalized font-size (`1.25rem`) -> `--text-*` token (`xl`). */
+  textSizes: Map<string, string>
+  /** Roots that derive from the `--spacing` multiplier (e.g. `p`, `m`, `gap`). */
+  spacingRoots: Set<string>
+  /** The `--spacing` base in rem (default `0.25`). */
+  spacingBaseRem: number
+  /** Resolved theme variables (`--color-red-500` -> `oklch(...)`). */
+  vars: Map<string, string>
+}
+
+/** Resolves the real declarations a class produces, concretized for comparison. */
+export function resolveClassDecls(
+  ds: DesignSystem,
+  className: string,
+  vars: Map<string, string>,
+): Decl[] | null {
+  const css = ds.candidatesToCss([className])[0]
+  if (!css) return null
+  let raw: Decl[] | null
+  try {
+    raw = realDecls(css)
+  } catch {
+    return null
+  }
+  if (!raw) return null
+  return raw.map((d) => ({ prop: d.prop, value: concretize(d.value, vars) }))
+}
+
+const isCustomProp = (prop: string) => prop.startsWith('--')
+
+/** Is this resolved value a color (and not a bare length/keyword we handle elsewhere)? */
+export function isColorValue(value: string): boolean {
+  const v = value.trim().toLowerCase()
+  if (v === 'transparent' || v === 'currentcolor') return true
+  if (/^-?\d/.test(v)) return false // starts with a number -> length/number, not color
+  return colorParse(v) !== undefined
+}
+
+interface Decl {
+  prop: string
+  value: string
+}
+
+/** Resolves a generated utility value to a concrete, comparable form. */
+function concretize(value: string, vars: Map<string, string>): string {
+  return evalCalc(resolveVars(value, vars)).replace(/\s+/g, ' ').trim()
+}
+
+// A single class selector once escaped chars are removed: `.p-4`, `.p-[13px]`
+// (as `.p-\[13px\]`) pass; pseudos (`:hover`), combinators and nesting (`&`) fail.
+function isSimpleClassSelector(selector: string): boolean {
+  const bare = selector.replace(/\\./g, '') // drop escaped char pairs (\[ \] \# \: ...)
+  return /^\.[^\s,>+~:&[\]()]*$/.test(bare)
+}
+
+// Trailing content after the main rule may only be `@property` blocks (which
+// declare the `--tw-*` custom properties). Anything else — `@media`, `@supports`,
+// a second style rule — means the utility is conditional and we don't index it.
+const ONLY_PROPERTY_BLOCKS = /^(@property\b[^{]*\{[^{}]*\}\s*)+$/
+
+/**
+ * Extracts the real (non-`--tw-*`) declarations from a candidate whose CSS is a
+ * single simple-class rule. Returns null for utilities that need pseudos,
+ * combinators or nesting (e.g. `placeholder-*`, `divide-*`), which we don't index.
+ *
+ * Hand-rolled rather than PostCSS: generated utility CSS is trivially regular,
+ * and this runs ~23k times at index-build, where PostCSS dominates the cost.
+ */
+function realDecls(css: string): Decl[] | null {
+  const open = css.indexOf('{')
+  if (open === -1) return null
+  if (!isSimpleClassSelector(css.slice(0, open).trim())) return null
+
+  const bodyEnd = matchBrace(css, open)
+  if (bodyEnd === -1) return null
+  const body = css.slice(open + 1, bodyEnd)
+  if (body.includes('{')) return null // nested rule (e.g. pseudo, group) — skip
+
+  const rest = css.slice(bodyEnd + 1).trim()
+  if (rest && !ONLY_PROPERTY_BLOCKS.test(rest)) return null
+
+  const decls: Decl[] = []
+  for (const part of splitTopLevel(body, ';')) {
+    const colon = part.indexOf(':')
+    if (colon === -1) continue
+    const prop = part.slice(0, colon).trim().toLowerCase()
+    if (!prop || isCustomProp(prop)) continue
+    decls.push({ prop, value: part.slice(colon + 1).trim() })
+  }
+  return decls
+}
+
+/** Index of the `}` matching the `{` at `open`, or -1 if unbalanced. */
+function matchBrace(s: string, open: number): number {
+  let depth = 0
+  for (let i = open; i < s.length; i++) {
+    if (s[i] === '{') depth++
+    else if (s[i] === '}' && --depth === 0) return i
+  }
+  return -1
+}
+
+/** Splits on `sep`, ignoring separators nested inside (), [], "" or ''. */
+function splitTopLevel(s: string, sep: string): string[] {
+  const parts: string[] = []
+  let depth = 0
+  let quote = ''
+  let start = 0
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]
+    if (quote) {
+      if (ch === quote && s[i - 1] !== '\\') quote = ''
+    } else if (ch === '"' || ch === "'") {
+      quote = ch
+    } else if (ch === '(' || ch === '[') {
+      depth++
+    } else if (ch === ')' || ch === ']') {
+      depth--
+    } else if (ch === sep && depth === 0) {
+      parts.push(s.slice(start, i))
+      start = i + 1
+    }
+  }
+  parts.push(s.slice(start))
+  return parts
+}
+
+/** Canonical key for a resolved declaration used in the reverse index. */
+export function declKey(prop: string, value: string, remInPx: number): string {
+  const length = normalizeLength(value, remInPx)
+  return `${prop}|${length ?? normalizeValue(value)}`
+}
+
+/** Builds the reverse index from the design system's full class list. */
+export function buildReverseIndex(ds: DesignSystem, remInPx: number): ReverseIndex {
+  const vars = new Map<string, string>()
+  const palette = new Map<string, string>()
+  const textSizes = new Map<string, string>()
+  for (const [name, entry] of ds.theme.values) {
+    const val = entry.value.replace(/\s+/g, ' ').trim()
+    vars.set(name, val)
+    if (name.startsWith('--color-')) palette.set(name.slice('--color-'.length), val)
+    // `--text-xl` is a size; `--text-xl--line-height` is its companion — skip the latter.
+    if (name.startsWith('--text-') && !name.includes('--line-height')) {
+      const token = name.slice('--text-'.length)
+      const rem = normalizeLength(val, remInPx)
+      if (rem) textSizes.set(rem, token)
+    }
+  }
+
+  const decls = new Map<string, string>()
+  const propToRoot = new Map<string, string>()
+  const colorRoots = new Map<string, string>()
+  const spacingRoots = new Set<string>()
+  // Tracks whether a property's root came from a single- or multi-declaration
+  // utility, so single-declaration utilities always win (in first-seen order).
+  const rootSource = new Map<string, 'single' | 'multi'>()
+
+  const spacingBaseRem = (() => {
+    const n = normalizeLength(vars.get('--spacing') ?? '0.25rem', remInPx)
+    return n ? parseFloat(n) : 0.25
+  })()
+
+  // Palette-colored utilities (`bg-red-500`, `text-sky-300/50`) are handled
+  // algorithmically by the color matcher and never stored in the index, so
+  // rendering all ~15k of them is pure waste. Skip them, keeping just one
+  // representative per root so color-root derivation (`background-color` -> `bg`)
+  // still works. This roughly halves the cost of building the index.
+  const colorTokens = new Set(palette.keys())
+  const names: string[] = []
+  const colorSampleRoots = new Set<string>()
+  for (const name of ds.getClassList().map((e) => e[0])) {
+    const parsed = ds.parseCandidate(name)[0]
+    const value = parsed?.value?.kind === 'named' ? parsed.value.value : null
+    if (value && colorTokens.has(value)) {
+      const root = parsed!.root
+      if (colorSampleRoots.has(root)) continue
+      colorSampleRoots.add(root) // keep the first utility of each color root
+    }
+    names.push(name)
+  }
+  const cssList = ds.candidatesToCss(names)
+
+  for (let i = 0; i < names.length; i++) {
+    const css = cssList[i]
+    if (!css) continue
+    const name = names[i]
+
+    let raw: Decl[] | null
+    try {
+      raw = realDecls(css)
+    } catch {
+      continue
+    }
+    if (!raw || raw.length === 0) continue
+
+    const resolved = raw.map((d) => ({ prop: d.prop, value: concretize(d.value, vars) }))
+    const root = utilityRoot(ds, name)
+
+    if (root && !root.startsWith('-')) {
+      if (resolved.length === 1) {
+        // Single-declaration utilities are authoritative; first seen wins, and
+        // they override any root a multi-declaration utility guessed earlier.
+        const { prop, value } = resolved[0]
+        if (isColorValue(value)) {
+          if (!colorRoots.has(prop)) colorRoots.set(prop, root)
+        } else if (rootSource.get(prop) !== 'single') {
+          propToRoot.set(prop, root)
+          rootSource.set(prop, 'single')
+        }
+      } else {
+        // Multi-declaration utilities (e.g. `text-xl` sets font-size + line-height)
+        // fill in roots for otherwise-unclaimed properties like `font-size` -> `text`.
+        // A wrong guess just fails verification at convert time and falls back.
+        for (const { prop, value } of resolved) {
+          if (!isColorValue(value) && !propToRoot.has(prop)) {
+            propToRoot.set(prop, root)
+            rootSource.set(prop, 'multi')
+          }
+        }
+      }
+    }
+
+    // Derive the exact index + spacing roots from single-declaration utilities.
+    if (resolved.length === 1) {
+      const { prop, value } = resolved[0]
+      // Colors are matched by the color matcher, not the exact string index.
+      if (!isColorValue(value)) {
+        const key = declKey(prop, value, remInPx)
+        const existing = decls.get(key)
+        if (!existing || name.length < existing.length) decls.set(key, name)
+        // A root is spacing-based if its numeric token equals value / --spacing.
+        if (root && !root.startsWith('-')) {
+          const parsed = ds.parseCandidate(name)[0]
+          const token = parsed?.value?.kind === 'named' ? parsed.value.value : null
+          const rem = normalizeLength(value, remInPx)
+          if (token && /^\d+$/.test(token) && rem !== null) {
+            if (Math.abs(parseFloat(rem) - Number(token) * spacingBaseRem) < 1e-9) {
+              spacingRoots.add(root)
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return { decls, propToRoot, colorRoots, palette, textSizes, spacingRoots, spacingBaseRem, vars }
+}
+
+const rootCache = new WeakMap<DesignSystem, Map<string, string | null>>()
+
+/** Returns the functional/static root of a utility name (e.g. `p-4` -> `p`). */
+function utilityRoot(ds: DesignSystem, name: string): string | null {
+  let cache = rootCache.get(ds)
+  if (!cache) rootCache.set(ds, (cache = new Map()))
+  if (cache.has(name)) return cache.get(name)!
+  let root: string | null = null
+  try {
+    const parsed = ds.parseCandidate(name)
+    root = parsed[0]?.root ?? null
+  } catch {
+    root = null
+  }
+  cache.set(name, root)
+  return root
+}

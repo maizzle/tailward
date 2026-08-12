@@ -1,0 +1,56 @@
+{
+  "name": "csstotailwind",
+  "version": "0.0.0",
+  "description": "Convert regular CSS to Tailwind CSS v4 utility classes.",
+  "license": "MIT",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "dev": "vitest",
+    "lint": "oxlint",
+    "test": "vitest run --coverage",
+    "pretest": "npm run lint",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "culori": "^4.0.2",
+    "postcss": "^8.5.6",
+    "postcss-calc": "^10.1.1",
+    "postcss-safe-parser": "^7.0.1",
+    "postcss-value-parser": "^4.2.0"
+  },
+  "peerDependencies": {
+    "tailwindcss": "^4"
+  },
+  "devDependencies": {
+    "@types/culori": "^4.0.1",
+    "@types/node": "^26.0.1",
+    "@types/postcss-safe-parser": "^5.0.4",
+    "@vitest/coverage-v8": "^4.0.18",
+    "oxlint": "^1.50.0",
+    "tailwindcss": "^4.3.0",
+    "tsdown": "^0.22.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.18"
+  },
+  "keywords": [
+    "tailwindcss",
+    "tailwind",
+    "css",
+    "converter",
+    "css-to-tailwind",
+    "utility-classes"
+  ]
+}
