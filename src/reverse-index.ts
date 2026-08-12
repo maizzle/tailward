@@ -1,5 +1,5 @@
-import { parse as colorParse } from 'culori'
 import type { DesignSystem } from './design-system.ts'
+import { isColor } from './color.ts'
 import { resolveVars, evalCalc, normalizeLength, normalizeValue } from './normalize.ts'
 
 export interface ReverseIndex {
@@ -17,7 +17,14 @@ export interface ReverseIndex {
   spacingRoots: Set<string>
   /** The `--spacing` base in rem (default `0.25`). */
   spacingBaseRem: number
-  /** Resolved theme variables (`--color-red-500` -> `oklch(...)`). */
+  /** Roots that accept a bare integer value (`z` -> `z-60`, `order` -> `order-13`). */
+  numericRoots: Set<string>
+  /**
+   * Utility root (or static class name) -> ordinal position in Tailwind's class
+   * order. Lets us sort output without the engine (`getClassOrder`).
+   */
+  rootRanks: Map<string, number>
+  /** Resolved theme variables (`--color-red-500` -> `oklch(...)`). Empty when embedded. */
   vars: Map<string, string>
 }
 
@@ -43,10 +50,7 @@ const isCustomProp = (prop: string) => prop.startsWith('--')
 
 /** Is this resolved value a color (and not a bare length/keyword we handle elsewhere)? */
 export function isColorValue(value: string): boolean {
-  const v = value.trim().toLowerCase()
-  if (v === 'transparent' || v === 'currentcolor') return true
-  if (/^-?\d/.test(v)) return false // starts with a number -> length/number, not color
-  return colorParse(v) !== undefined
+  return isColor(value)
 }
 
 interface Decl {
@@ -257,7 +261,48 @@ export function buildReverseIndex(ds: DesignSystem, remInPx: number): ReverseInd
     }
   }
 
-  return { decls, propToRoot, colorRoots, palette, textSizes, spacingRoots, spacingBaseRem, vars }
+  const numericRoots = computeNumericRoots(ds, names)
+  const rootRanks = computeRootRanks(ds, names)
+
+  return {
+    decls, propToRoot, colorRoots, palette, textSizes, spacingRoots,
+    spacingBaseRem, numericRoots, rootRanks, vars,
+  }
+}
+
+/** Finds roots that accept a bare integer value (probing `root-97`). */
+function computeNumericRoots(ds: DesignSystem, names: string[]): Set<string> {
+  const roots = new Set<string>()
+  for (const name of names) {
+    const r = utilityRoot(ds, name)
+    if (r && !r.startsWith('-')) roots.add(r)
+  }
+  const list = [...roots]
+  const css = ds.candidatesToCss(list.map((r) => `${r}-97`))
+  const numeric = new Set<string>()
+  list.forEach((r, i) => {
+    const c = css[i]
+    if (c && realDecls(c)?.length) numeric.add(r)
+  })
+  return numeric
+}
+
+/** Maps each root / static class to its ordinal in Tailwind's class order. */
+function computeRootRanks(ds: DesignSystem, names: string[]): Map<string, number> {
+  const ranks = new Map<string, number>()
+  try {
+    const order = ds
+      .getClassOrder(names)
+      .filter((e): e is [string, bigint] => e[1] !== null)
+      .sort((a, b) => (a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0))
+    order.forEach(([name], i) => {
+      const key = utilityRoot(ds, name) ?? name
+      if (!ranks.has(key)) ranks.set(key, i)
+    })
+  } catch {
+    // ordering is best-effort
+  }
+  return ranks
 }
 
 const rootCache = new WeakMap<DesignSystem, Map<string, string | null>>()

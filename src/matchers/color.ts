@@ -1,7 +1,4 @@
-import { parse as colorParse, converter, differenceEuclidean } from 'culori'
-
-const toOklab = converter('oklab')
-const distance = differenceEuclidean('oklab')
+import { toOklab, alphaOfColor, oklabDistance, type Oklab } from '../color.ts'
 
 export interface ColorMatcher {
   match(root: string, value: string, threshold: number): string | null
@@ -10,11 +7,10 @@ export interface ColorMatcher {
 /** Builds a color matcher over a palette of `token -> color string`. */
 export function createColorMatcher(palette: Map<string, string>): ColorMatcher {
   // Pre-parse palette colors once.
-  const parsed: { token: string; color: NonNullable<ReturnType<typeof toOklab>> }[] = []
+  const parsed: { token: string; color: Oklab }[] = []
   for (const [token, value] of palette) {
-    const c = colorParse(value)
-    const oklab = c && toOklab(c)
-    if (oklab) parsed.push({ token, color: oklab })
+    const c = toOklab(value)
+    if (c) parsed.push({ token, color: c })
   }
 
   return {
@@ -23,17 +19,15 @@ export function createColorMatcher(palette: Map<string, string>): ColorMatcher {
       if (v === 'transparent') return `${root}-transparent`
       if (v === 'currentcolor') return `${root}-current`
 
-      const input = colorParse(v)
-      if (!input) return null
       // Alpha channels don't round-trip cleanly to a bare token; defer to arbitrary.
-      if (input.alpha !== undefined && input.alpha !== 1) return null
+      if (alphaOfColor(v) !== 1) return null
 
-      const target = toOklab(input)
+      const target = toOklab(v)
       if (!target) return null
       let best: string | null = null
       let bestDist = Infinity
       for (const entry of parsed) {
-        const d = distance(target, entry.color)
+        const d = oklabDistance(target, entry.color)
         if (d < bestDist) {
           bestDist = d
           best = entry.token

@@ -1,14 +1,7 @@
-import safeParse from 'postcss-safe-parser'
-import type { Rule, Declaration, AtRule } from 'postcss'
-import { parse as colorParse, converter as culoriConverter, differenceEuclidean } from 'culori'
-import { loadDesignSystem, type DesignSystem } from './design-system.ts'
-import {
-  buildReverseIndex,
-  declKey,
-  isColorValue,
-  resolveClassDecls,
-  type ReverseIndex,
-} from './reverse-index.ts'
+import { parseStylesheet, type ParsedDecl, type AtRuleContext } from './css-parser.ts'
+import type { DesignSystem } from './design-system.ts'
+import { toOklab, oklabDistance } from './color.ts'
+import { declKey, isColorValue, resolveClassDecls, type ReverseIndex } from './reverse-index.ts'
 import { normalizeLength } from './normalize.ts'
 import { createColorMatcher, type ColorMatcher } from './matchers/color.ts'
 import { matchSpacing } from './matchers/spacing.ts'
@@ -17,37 +10,53 @@ import { expandBoxShorthand } from './matchers/shorthand.ts'
 import { selectorVariants, mediaVariant, type VariantContext } from './variants.ts'
 import type { ConverterOptions, ConvertResult, ConvertedNode } from './types.ts'
 
-const toOklab = culoriConverter('oklab')
-const colorDistance = differenceEuclidean('oklab')
-
-/** The parts of a loaded system that depend only on css/base/remInPx. */
+/** A loaded system. `ds` is present only on the live (custom-theme) path. */
 interface LoadedSystem {
-  ds: DesignSystem
+  ds?: DesignSystem
   index: ReverseIndex
   colorMatcher: ColorMatcher
   breakpoints: Map<string, string>
 }
 
-// Building the reverse index costs ~1s, so cache it across converter instances
-// that share the same theme + rem scale (color/arbitrary options don't affect it).
 const systemCache = new Map<string, Promise<LoadedSystem>>()
+
+function breakpointsFrom(index: ReverseIndex, remInPx: number): Map<string, string> {
+  const bp = new Map<string, string>()
+  for (const [name, value] of index.vars) {
+    if (name.startsWith('--breakpoint-')) {
+      const rem = normalizeLength(value, remInPx)
+      if (rem) bp.set(rem, name.slice('--breakpoint-'.length))
+    }
+  }
+  return bp
+}
+
+function finalizeSystem(system: Omit<LoadedSystem, 'colorMatcher' | 'breakpoints'>, remInPx: number): LoadedSystem {
+  return {
+    ...system,
+    colorMatcher: createColorMatcher(system.index.palette),
+    breakpoints: breakpointsFrom(system.index, remInPx),
+  }
+}
 
 function loadSystem(css: string | undefined, base: string | undefined, remInPx: number): Promise<LoadedSystem> {
   const key = `${base ?? ''}|${remInPx}|${css ?? ''}`
   let cached = systemCache.get(key)
   if (!cached) {
-    cached = (async () => {
-      const ds = await loadDesignSystem(css, base)
-      const index = buildReverseIndex(ds, remInPx)
-      const breakpoints = new Map<string, string>()
-      for (const [name, value] of index.vars) {
-        if (name.startsWith('--breakpoint-')) {
-          const rem = normalizeLength(value, remInPx)
-          if (rem) breakpoints.set(rem, name.slice('--breakpoint-'.length))
-        }
-      }
-      return { ds, index, colorMatcher: createColorMatcher(index.palette), breakpoints }
-    })()
+    // Stock theme -> engine-free embedded index (edge-safe, ~ms). Custom theme
+    // -> dynamically import the engine loader (Node only) so the stock path
+    // never pulls `tailwindcss`/`node:fs` into an edge bundle.
+    cached =
+      css === undefined && base === undefined
+        ? import('./embedded.ts').then((m) => finalizeSystem({ index: m.loadEmbeddedIndex(remInPx) }, remInPx))
+        : (async () => {
+            const [{ loadDesignSystem }, { buildReverseIndex }] = await Promise.all([
+              import('./design-system.ts'),
+              import('./reverse-index.ts'),
+            ])
+            const ds = await loadDesignSystem(css, base)
+            return finalizeSystem({ ds, index: buildReverseIndex(ds, remInPx) }, remInPx)
+          })()
     systemCache.set(key, cached)
   }
   return cached
@@ -73,9 +82,9 @@ export class CssToTailwind {
     }
   }
 
-  /** Loads the design system and builds the reverse index (idempotent, cached). */
+  /** Loads the reverse index (embedded or live), idempotent + cached. */
   private async init(): Promise<void> {
-    if (this.ds) return
+    if (this.index) return
     const sys = await loadSystem(this.options.css, this.options.base, this.options.remInPx)
     this.ds = sys.ds
     this.index = sys.index
@@ -86,58 +95,45 @@ export class CssToTailwind {
   /** Converts a CSS string into Tailwind utilities, grouped per selector. */
   async convert(css: string): Promise<ConvertResult> {
     await this.init()
-    const root = safeParse(css)
     const nodes: ConvertedNode[] = []
-
-    root.walkRules((rule) => {
-      // Skip nested container selectors handled via their ancestor at-rules.
-      const media = this.collectMediaVariants(rule)
+    for (const rule of parseStylesheet(css)) {
+      const media = this.atRuleVariants(rule.atRules)
       for (const selector of rule.selectors) {
-        const node = this.convertRule(rule, selector, media)
+        const node = this.convertRule(rule.decls, selector, media)
         if (node) nodes.push(node)
       }
-    })
-
+    }
     return { nodes }
   }
 
-  /** Walks a rule's ancestor at-rules into variant prefixes, or null if unsupported. */
-  private collectMediaVariants(rule: Rule): string[] | null {
+  /** Maps a rule's at-rule context into variant prefixes, or null if unsupported. */
+  private atRuleVariants(atRules: AtRuleContext[]): string[] | null {
     const variants: string[] = []
-    let parent: import('postcss').Container | import('postcss').Document | undefined = rule.parent
-    while (parent && parent.type === 'atrule') {
-      const at = parent as AtRule
+    for (const at of atRules) {
       if (at.name === 'media') {
         const v = mediaVariant(at.params, this.variantCtx!)
         if (!v) return null
-        variants.unshift(v)
+        variants.push(v)
       } else if (at.name === 'supports') {
         // `(display: grid)` -> `supports-[display:grid]`; strip one wrapping paren pair.
         let feat = at.params.replace(/\s+/g, '')
         if (feat.startsWith('(') && feat.endsWith(')')) feat = feat.slice(1, -1)
-        variants.unshift(`supports-[${feat}]`)
+        variants.push(`supports-[${feat}]`)
       } else {
         return null
       }
-      parent = at.parent
     }
     return variants
   }
 
-  private convertRule(rule: Rule, selector: string, media: string[] | null): ConvertedNode | null {
+  private convertRule(decls: ParsedDecl[], selector: string, media: string[] | null): ConvertedNode | null {
     const { base, variants: pseudoVariants } = selectorVariants(selector)
     const classes: string[] = []
     const complementary: string[] = []
 
-    for (const child of rule.nodes) {
-      if (child.type !== 'decl') continue
-      const decl = child as Declaration
+    for (const decl of decls) {
       // If the rule sits under an unsupported at-rule, nothing is convertible.
-      if (media === null) {
-        complementary.push(stringifyDecl(decl))
-        continue
-      }
-      const cls = this.convertDeclaration(decl.prop.toLowerCase(), decl.value)
+      const cls = media === null ? [] : this.convertDeclaration(decl.prop.toLowerCase(), decl.value)
       if (cls.length) classes.push(...cls)
       else complementary.push(stringifyDecl(decl))
     }
@@ -227,10 +223,9 @@ export class CssToTailwind {
   private arbitraryUtilityFor(root: string, prop: string, value: string): string | null {
     if (!this.options.arbitrary) return null
     // Prefer a named functional utility for bare-number values (`z-index: 60` ->
-    // `z-60`, `order: 13` -> `order-13`). We guess `root-<number>` and verify it
-    // against the engine — far cheaper than Tailwind's canonicalizeCandidates,
-    // which carries a large first-call warmup cost.
-    if (this.options.canonicalize && /^\d+$/.test(value)) {
+    // `z-60`, `order: 13` -> `order-13`), gated by the set of numeric roots so we
+    // never emit an invalid class (works without the engine).
+    if (this.options.canonicalize && /^\d+$/.test(value) && this.index!.numericRoots.has(root)) {
       const named = `${root}-${value}`
       if (this.verify(named, prop, value)) return named
     }
@@ -245,9 +240,14 @@ export class CssToTailwind {
     return this.verify(candidate, prop, value) ? candidate : null
   }
 
-  /** Confirms a class produces exactly the input declaration and nothing else. */
+  /**
+   * Confirms a class produces exactly the input declaration. On the embedded
+   * (engine-free) path there's nothing to render against, so we trust the
+   * pre-verified index + deterministic matchers.
+   */
   private verify(className: string, prop: string, value: string): boolean {
-    const decls = resolveClassDecls(this.ds!, className, this.index!.vars)
+    if (!this.ds) return true
+    const decls = resolveClassDecls(this.ds, className, this.index!.vars)
     if (!decls || decls.length !== 1) return false
     const only = decls[0]
     return only.prop === prop && this.valueEquals(prop, only.value, value)
@@ -258,7 +258,8 @@ export class CssToTailwind {
    * the size utility also carries — mirrors css-to-tailwindcss's behavior).
    */
   private verifyProducesFontSize(className: string, value: string): boolean {
-    const decls = resolveClassDecls(this.ds!, className, this.index!.vars)
+    if (!this.ds) return true // trust the theme-derived text-size scale
+    const decls = resolveClassDecls(this.ds, className, this.index!.vars)
     const fs = decls?.find((d) => d.prop === 'font-size')
     return fs ? this.valueEquals('font-size', fs.value, value) : false
   }
@@ -266,33 +267,53 @@ export class CssToTailwind {
   /** Compares two declaration values (colors by ΔE, lengths/keywords canonically). */
   private valueEquals(prop: string, a: string, b: string): boolean {
     if (isColorValue(b)) {
-      const ca = colorParse(a)
-      const cb = colorParse(b)
+      const ca = toOklab(a)
+      const cb = toOklab(b)
       if (!ca || !cb) return a.trim().toLowerCase() === b.trim().toLowerCase()
-      return colorDistance(toOklab(ca), toOklab(cb)) <= Math.max(this.options.colorThreshold, 1e-4)
+      return oklabDistance(ca, cb) <= Math.max(this.options.colorThreshold, 1e-4)
     }
     return declKey(prop, a, this.options.remInPx) === declKey(prop, b, this.options.remInPx)
   }
 
-  /** Sorts classes into Tailwind's canonical class order. */
+  /**
+   * Sorts classes into Tailwind's class order using the embedded root-rank table
+   * (no engine). Classes with an unknown root sort last, preserving input order.
+   */
   private orderClasses(classes: string[]): string[] {
-    try {
-      const order = this.ds!.getClassOrder(classes)
-      return [...order]
-        .sort((a, b) => {
-          if (a[1] === b[1]) return 0
-          if (a[1] === null) return -1
-          if (b[1] === null) return 1
-          return a[1] < b[1] ? -1 : 1
-        })
-        .map((e) => e[0])
-    } catch {
-      return classes
+    const ranks = this.index!.rootRanks
+    return classes
+      .map((className, i) => ({ className, rank: ranks.get(this.orderKey(className)) ?? Infinity, i }))
+      .sort((a, b) => (a.rank !== b.rank ? a.rank - b.rank : a.i - b.i))
+      .map((e) => e.className)
+  }
+
+  /** Reduces a class to its ordering key (root or static-class name). */
+  private orderKey(className: string): string {
+    let base = stripVariants(className)
+    if (base.startsWith('-')) base = base.slice(1)
+    const parts = base.split('-')
+    for (let n = parts.length; n >= 1; n--) {
+      const key = parts.slice(0, n).join('-')
+      if (this.index!.rootRanks.has(key)) return key
     }
+    return base
   }
 }
 
-function stringifyDecl(decl: Declaration): string {
+/** Strips variant prefixes (`md:hover:`) that sit outside bracketed values. */
+function stripVariants(className: string): string {
+  let depth = 0
+  let lastColon = -1
+  for (let i = 0; i < className.length; i++) {
+    const c = className[i]
+    if (c === '[' || c === '(') depth++
+    else if (c === ']' || c === ')') depth--
+    else if (c === ':' && depth === 0) lastColon = i
+  }
+  return className.slice(lastColon + 1)
+}
+
+function stringifyDecl(decl: ParsedDecl): string {
   return `${decl.prop}: ${decl.value}${decl.important ? ' !important' : ''}`
 }
 
