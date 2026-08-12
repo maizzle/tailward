@@ -1,7 +1,15 @@
 export interface ConverterOptions {
   /**
-   * CSS used to load the Tailwind design system. Defaults to `@import "tailwindcss"`.
-   * Pass your own CSS (with `@theme { ... }`) to convert against a customized theme.
+   * A custom `@theme` (CSS custom properties) to convert against — engine-free,
+   * so it runs on edge/workers. Overrides stock tokens (colors, spacing, radius,
+   * font sizes, ...). For `@plugin`/`@utility` or `@import`, use `css` instead.
+   * @example theme: '@theme { --color-brand: #5b21b6; --spacing: 0.2rem; }'
+   */
+  theme?: string
+  /**
+   * Full CSS used to load the Tailwind design system via its engine (Node only).
+   * Pass this for `@plugin`, custom `@utility`, or `@import`. Defaults to the
+   * stock theme (engine-free) when omitted.
    */
   css?: string
   /** Base directory used to resolve `@import` statements in `css`. Defaults to `process.cwd()`. */

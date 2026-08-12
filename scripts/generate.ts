@@ -45,29 +45,41 @@ const fullOut = new Map<string, string>()
 for (const [key] of entries) fullOut.set(key, await classesFor(declOf(key)))
 
 // Drop the exact index -> matcher-only behavior, then keep only entries the
-// matchers can't reproduce (statics, irregular functionals).
+// matchers can't reproduce (statics, irregular functionals, named scales).
 liveIndex.decls.clear()
 declCache.clear()
-const minimalDecls: Record<string, string> = {}
+const minimal: [string, string][] = []
 for (const [key, cls] of entries) {
-  if ((await classesFor(declOf(key))) !== fullOut.get(key)) minimalDecls[key] = cls
+  if ((await classesFor(declOf(key))) !== fullOut.get(key)) minimal.push([key, cls])
+}
+
+// Split into theme-independent decls and token-derived decls (whose CSS is a
+// single `prop: var(--token)`), so a custom @theme can recompute the latter.
+const TOKEN_VALUE = /^var\((--[\w-]+)\)$/
+const plainDecls: Record<string, string> = {}
+const tokenDecls: [string, string, string][] = []
+for (const [key, cls] of minimal) {
+  const css = ds.candidatesToCss([cls])[0] ?? ''
+  const m = /\{\s*([^:]+):\s*([^;]+?)\s*;?\s*\}/.exec(css.replace(/\s+/g, ' '))
+  const varMatch = m && TOKEN_VALUE.exec(m[2].trim())
+  if (m && varMatch) tokenDecls.push([m[1].trim(), varMatch[1], cls])
+  else plainDecls[key] = cls
 }
 
 const fromMap = <V>(m: Map<string, V>) => Object.fromEntries(m)
-const breakpointVars = Object.fromEntries(
-  [...index.vars].filter(([n]) => n.startsWith('--breakpoint-')),
-)
+// Every non-color theme var (colors live in `palette`); lets a custom @theme
+// override radius/spacing/breakpoints/weights/etc. and rebuild the index.
+const themeVars = Object.fromEntries([...index.vars].filter(([n]) => !n.startsWith('--color-')))
 
 const data: StockTheme = {
   tailwindVersion,
-  spacingBaseRem: index.spacingBaseRem,
-  vars: breakpointVars,
-  decls: minimalDecls,
+  themeVars,
+  palette: fromMap(index.palette),
+  plainDecls,
+  tokenDecls,
   propToRoot: fromMap(index.propToRoot),
   colorRoots: fromMap(index.colorRoots),
   spacingRoots: [...index.spacingRoots],
-  textSizes: fromMap(index.textSizes),
-  palette: fromMap(index.palette),
   numericRoots: [...index.numericRoots],
   rootRanks: fromMap(index.rootRanks),
 }
@@ -85,5 +97,6 @@ writeFileSync(
 const size = (JSON.stringify(data).length / 1024).toFixed(0)
 console.log(
   `Generated stock-theme.ts for tailwindcss@${tailwindVersion}: ` +
-    `${Object.keys(minimalDecls).length} embedded decls (of ${entries.length}), ${size}KB`,
+    `${Object.keys(plainDecls).length} plain + ${tokenDecls.length} token decls ` +
+    `(of ${entries.length}), ${size}KB`,
 )

@@ -62,8 +62,12 @@ describe('spacing matcher', () => {
   it('handles negative multiples', () => {
     expect(matchSpacing('mt', '-1rem', 0.25, 16)).toBe('-mt-4')
   })
-  it('returns null for non-integer multiples', () => {
-    expect(matchSpacing('p', '13px', 0.25, 16)).toBeNull()
+  it('reverses 0.25-step multiples', () => {
+    expect(matchSpacing('p', '13px', 0.25, 16)).toBe('p-3.25') // 0.8125rem / 0.25 = 3.25
+    expect(matchSpacing('p', '14px', 0.25, 16)).toBe('p-3.5')
+  })
+  it('returns null for off-scale (non-0.25-step) multiples', () => {
+    expect(matchSpacing('p', '13.7px', 0.25, 16)).toBeNull()
   })
   it('returns null for non-length values', () => {
     expect(matchSpacing('p', 'auto', 0.25, 16)).toBeNull()

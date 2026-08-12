@@ -39,17 +39,23 @@ function finalizeSystem(system: Omit<LoadedSystem, 'colorMatcher' | 'breakpoints
   }
 }
 
-function loadSystem(css: string | undefined, base: string | undefined, remInPx: number): Promise<LoadedSystem> {
-  const key = `${base ?? ''}|${remInPx}|${css ?? ''}`
+interface SystemOptions {
+  css?: string
+  base?: string
+  theme?: string
+  remInPx: number
+}
+
+function loadSystem({ css, base, theme, remInPx }: SystemOptions): Promise<LoadedSystem> {
+  const key = `${base ?? ''}|${remInPx}|${theme ?? ''}|${css ?? ''}`
   let cached = systemCache.get(key)
   if (!cached) {
-    // Stock theme -> engine-free embedded index (edge-safe, ~ms). Custom theme
-    // -> dynamically import the engine loader (Node only) so the stock path
-    // never pulls `tailwindcss`/`node:fs` into an edge bundle.
+    // `css`/`base` need the Tailwind engine (Node only) — dynamically imported so
+    // the stock/`theme` paths never pull `tailwindcss`/`node:fs` into an edge
+    // bundle. Stock and custom-`theme` use the engine-free embedded index.
     cached =
-      css === undefined && base === undefined
-        ? import('./embedded.ts').then((m) => finalizeSystem({ index: m.loadEmbeddedIndex(remInPx) }, remInPx))
-        : (async () => {
+      css !== undefined || base !== undefined
+        ? (async () => {
             const [{ loadDesignSystem }, { buildReverseIndex }] = await Promise.all([
               import('./design-system.ts'),
               import('./reverse-index.ts'),
@@ -57,13 +63,20 @@ function loadSystem(css: string | undefined, base: string | undefined, remInPx: 
             const ds = await loadDesignSystem(css, base)
             return finalizeSystem({ ds, index: buildReverseIndex(ds, remInPx) }, remInPx)
           })()
+        : import('./embedded.ts').then((m) =>
+            finalizeSystem(
+              { index: theme ? m.loadThemeIndex(theme, remInPx) : m.loadEmbeddedIndex(remInPx) },
+              remInPx,
+            ),
+          )
     systemCache.set(key, cached)
   }
   return cached
 }
 
 export class CssToTailwind {
-  private options: Required<Omit<ConverterOptions, 'css' | 'base'>> & Pick<ConverterOptions, 'css' | 'base'>
+  private options: Required<Omit<ConverterOptions, 'css' | 'base' | 'theme'>> &
+    Pick<ConverterOptions, 'css' | 'base' | 'theme'>
   private ds?: DesignSystem
   private index?: ReverseIndex
   private colorMatcher?: ColorMatcher
@@ -77,6 +90,7 @@ export class CssToTailwind {
       arbitrary: options.arbitrary ?? true,
       colorThreshold: options.colorThreshold ?? 0.02,
       canonicalize: options.canonicalize ?? true,
+      theme: options.theme,
       css: options.css,
       base: options.base,
     }
@@ -85,7 +99,7 @@ export class CssToTailwind {
   /** Loads the reverse index (embedded or live), idempotent + cached. */
   private async init(): Promise<void> {
     if (this.index) return
-    const sys = await loadSystem(this.options.css, this.options.base, this.options.remInPx)
+    const sys = await loadSystem(this.options)
     this.ds = sys.ds
     this.index = sys.index
     this.colorMatcher = sys.colorMatcher

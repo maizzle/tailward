@@ -42,8 +42,9 @@ describe('CssToTailwind', () => {
     expect(await classesFor('.a { color: #fb2c36; }')).toEqual(['text-red-500'])
   })
 
-  it('falls back to arbitrary values off-scale', async () => {
-    expect(await classesFor('.a { padding: 13px; }')).toEqual(['p-[13px]'])
+  it('reverses 0.25-step spacing, arbitrary only when off-scale', async () => {
+    expect(await classesFor('.a { padding: 13px; }')).toEqual(['p-3.25']) // 13/4 = 3.25
+    expect(await classesFor('.a { padding: 13.7px; }')).toEqual(['p-[13.7px]']) // not a .25 step
   })
 
   it('emits arbitrary colors when exact matching is required', async () => {
@@ -86,8 +87,8 @@ describe('CssToTailwind', () => {
   })
 
   it('keeps arbitrary values that have no named equivalent', async () => {
-    expect(await classesFor('.a { width: 33.333333%; }')).toEqual(['w-[33.333333%]'])
-    expect(await classesFor('.a { padding: 13px; }')).toEqual(['p-[13px]'])
+    expect(await classesFor('.a { width: 33.333337%; }')).toEqual(['w-[33.333337%]'])
+    expect(await classesFor('.a { padding: 13.7px; }')).toEqual(['p-[13.7px]'])
   })
 
   it('can opt out of canonicalization', async () => {
@@ -116,16 +117,13 @@ describe('CssToTailwind', () => {
     expect(await classesFor('.a { padding: 8px 16px; }')).toEqual(['px-4', 'py-2'])
     expect(await classesFor('.a { margin: 12px 0 0; }')).toEqual(['mx-0', 'mt-3', 'mb-0'])
     expect(await classesFor('.a { margin: 10px 20px 30px 40px; }')).toEqual([
-      'mt-2.5', 'mr-5', 'mb-[30px]', 'ml-10',
+      'mt-2.5', 'mr-5', 'mb-7.5', 'ml-10',
     ])
   })
 
-  it('resolves named fractional spacing in shorthands', async () => {
+  it('resolves fractional spacing steps in shorthands', async () => {
     expect(await classesFor('.a { padding: 14px 20px; }')).toEqual(['px-5', 'py-3.5'])
-  })
-
-  it('mixes named and arbitrary parts in a shorthand', async () => {
-    expect(await classesFor('.a { padding: 13px 16px; }')).toEqual(['px-4', 'py-[13px]'])
+    expect(await classesFor('.a { padding: 13px 16px; }')).toEqual(['px-4', 'py-3.25'])
   })
 
   it('maps @supports to a supports variant', async () => {
@@ -156,9 +154,9 @@ describe('CssToTailwind', () => {
 
   it('keeps off-scale values complementary when arbitrary is disabled', async () => {
     const c2 = new CssToTailwind({ arbitrary: false })
-    const { nodes } = await c2.convert('.a { padding: 13px; }')
+    const { nodes } = await c2.convert('.a { padding: 13.7px; }')
     expect(nodes[0].tailwindClasses).toEqual([])
-    expect(nodes[0].complementary).toContain('padding: 13px')
+    expect(nodes[0].complementary).toContain('padding: 13.7px')
   })
 
   it('keeps negative sign outermost with variants', async () => {
