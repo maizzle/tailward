@@ -297,7 +297,7 @@ describe('CssToTailwind', () => {
       // Regression: the reverse index used to pick bg-conic/bg-auto/bg-bottom/inset-ring.
       expect(await classesFor(".a { background-image: url('x.jpg'); }")).toEqual(["bg-[url('x.jpg')]"])
       expect(await classesFor('.a { background-image: none; }')).toEqual(['bg-none'])
-      expect(await classesFor('.a { background-size: 552px 440px; }')).toEqual(['bg-[length:552px_440px]'])
+      expect(await classesFor('.a { background-size: 552px 440px; }')).toEqual(['bg-size-[552px_440px]'])
       expect(await classesFor('.a { background-size: cover; }')).toEqual(['bg-cover'])
       expect(await classesFor('.a { background-position: top center; }')).toEqual(['bg-position-[top_center]'])
       expect(await classesFor('.a { box-shadow: 0 0 5px red; }')).toEqual(['shadow-[0_0_5px_red]'])

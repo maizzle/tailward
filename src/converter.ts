@@ -332,7 +332,7 @@ export class CssToTailwind {
   /**
    * The correct arbitrary utility for the overloaded `background-*`/`box-shadow`
    * properties (`background-image: url(…)` -> `bg-[url(…)]`, `background-size:
-   * 5px 4px` -> `bg-[length:5px_4px]`, `background-position: top center` ->
+   * 5px 4px` -> `bg-size-[5px_4px]`, `background-position: top center` ->
    * `bg-position-[top_center]`, `box-shadow: …` -> `shadow-[…]`). Correct by
    * construction, so trusted like the other decomposers.
    */
@@ -342,7 +342,7 @@ export class CssToTailwind {
       case 'background-image':
         return [arbitraryUtility('bg', value)]
       case 'background-size':
-        return [arbitraryUtility('bg', `length:${value}`)]
+        return [arbitraryUtility('bg-size', value)]
       case 'background-position':
         return [arbitraryUtility('bg-position', value)]
       case 'box-shadow':
