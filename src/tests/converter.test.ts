@@ -311,6 +311,16 @@ describe('CssToTailwind', () => {
       expect(await classesFor('.a { outline-offset: 3px; }')).toEqual(['outline-offset-[3px]'])
       expect(await classesFor('.a { stroke-width: 3px; }')).toEqual(['stroke-[3px]'])
     })
+
+    it('does not put a per-side border-style on the width root', async () => {
+      // Regression: `border-t` is the width slot, so `border-t-[dashed]` would be
+      // `border-top-width: dashed` (invalid). Per-side style has no utility.
+      expect(await classesFor('.a { border-top-style: dashed; }')).toEqual(['[border-top-style:dashed]'])
+      expect(await classesFor('.a { border-bottom-style: dotted; }')).toEqual(['[border-bottom-style:dotted]'])
+      // But per-side width still uses the border root, and all-sides style is a keyword utility.
+      expect(await classesFor('.a { border-top-width: 3px; }')).toEqual(['border-t-[3px]'])
+      expect(await classesFor('.a { border-style: dashed; }')).toEqual(['border-dashed'])
+    })
   })
 
   describe('container queries', () => {

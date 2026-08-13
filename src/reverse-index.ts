@@ -347,6 +347,30 @@ export function buildReverseIndex(ds: DesignSystem, remInPx: number): ReverseInd
     if (!existing || name.length < existing.length) decls.set(key, name)
   })
 
+  // Validate propToRoot against the engine: drop any entry whose `root-[value]`
+  // form doesn't actually set the property. A multi-declaration utility can assign
+  // a root whose arbitrary form targets a different sub-property - e.g.
+  // `border-top-style` -> `border-t`, but `border-t-[dashed]` is the *width* slot
+  // (`border-top-width: dashed`). Probing a length/number/percentage covers the
+  // arbitrary value types; a dropped entry falls back to a faithful `[prop:value]`.
+  const probes = ['3px', '7', '50%']
+  const entries = [...propToRoot]
+  const probeCss = ds.candidatesToCss(entries.flatMap(([, root]) => probes.map((p) => `${root}-[${p}]`)))
+  entries.forEach(([prop], i) => {
+    const valid = probes.some((probe, j) => {
+      const css = probeCss[i * probes.length + j]
+      if (!css) return false
+      let raw: Decl[] | null
+      try {
+        raw = realDecls(css)
+      } catch {
+        return false
+      }
+      return raw?.some((d) => d.prop === prop && d.value.replace(/\s+/g, '').includes(probe)) ?? false
+    })
+    if (!valid) propToRoot.delete(prop)
+  })
+
   const numericRoots = computeNumericRoots(ds, names)
   const rootRanks = computeRootRanks(ds, names)
 
