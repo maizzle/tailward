@@ -29,6 +29,12 @@ describe('CssToTailwind', () => {
     expect(await classesFor('.a { padding: 3.25rem; }')).toEqual(['p-13'])
   })
 
+  it('maps a zero length to the -0 step regardless of unit', async () => {
+    expect(await classesFor('.a { width: 0; }')).toEqual(['w-0'])
+    expect(await classesFor('.a { width: 0px; }')).toEqual(['w-0'])
+    expect(await classesFor('.a { margin: 0rem; }')).toEqual(['m-0'])
+  })
+
   it('matches exact palette colors', async () => {
     // v4 red-500 is oklch(63.7% 0.237 25.331).
     expect(await classesFor('.a { color: oklch(63.7% 0.237 25.331); }')).toEqual(['text-red-500'])

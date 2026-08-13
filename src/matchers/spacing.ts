@@ -17,7 +17,9 @@ export function matchSpacing(
   const rem = normalizeLength(value, remInPx)
   if (rem === null) return null
   const n = parseFloat(rem) / baseRem
-  if (n === 0 || Math.abs(n) > maxSteps) return null
+  // Any zero length is the `-0` step (`w-0`), regardless of unit (`0`, `0px`, `0rem`).
+  if (n === 0) return `${root}-0`
+  if (Math.abs(n) > maxSteps) return null
   const quarters = n * 4
   if (Math.abs(quarters - Math.round(quarters)) > 1e-6) return null
   const magnitude = parseFloat((Math.abs(Math.round(quarters)) / 4).toFixed(5)).toString()
