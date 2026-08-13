@@ -49,6 +49,19 @@ export interface ConvertedNode {
   complementary: string
 }
 
+export interface Warning {
+  /** `approximate-color`: matched to a near palette token, not exact. `unconvertible`: no utility found. */
+  type: 'approximate-color' | 'unconvertible'
+  /** The rule this declaration belonged to. */
+  selector: string
+  /** The offending declaration, as CSS (`color: #a1b2c3`). */
+  declaration: string
+  /** Human-readable explanation. */
+  message: string
+}
+
 export interface ConvertResult {
   nodes: ConvertedNode[]
+  /** Non-fatal notes: approximated colors and declarations left unconverted. */
+  warnings: Warning[]
 }

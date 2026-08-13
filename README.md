@@ -134,7 +134,23 @@ interface ConvertResult {
     tailwindClasses: string[] // in Tailwind's class order
     complementary: string     // declarations that couldn't be converted, as CSS
   }[]
+  warnings: {
+    type: 'approximate-color' | 'unconvertible'
+    selector: string          // the rule it came from
+    declaration: string       // "color: #a1b2c3"
+    message: string           // human-readable explanation
+  }[]
 }
+```
+
+`warnings` surfaces what the conversion glossed over — colors matched to a
+*near* palette token rather than an exact one, and declarations left
+unconverted:
+
+```ts
+const { warnings } = await convertCss('.a { color: #a1b2c3 }', { colorThreshold: 0.2 })
+// [{ type: 'approximate-color', selector: '.a', declaration: 'color: #a1b2c3',
+//    message: 'approximated #a1b2c3 to text-mist-400 (ΔE 0.039)' }]
 ```
 
 ### `convertCss(css, options?): Promise<ConvertResult>`

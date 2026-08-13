@@ -8,7 +8,19 @@ import { matchSpacing } from './matchers/spacing.ts'
 import { arbitraryUtility, arbitraryProperty } from './matchers/arbitrary.ts'
 import { expandBoxShorthand } from './matchers/shorthand.ts'
 import { selectorVariants, mediaVariant, type VariantContext } from './variants.ts'
-import type { ConverterOptions, ConvertResult, ConvertedNode } from './types.ts'
+import type { ConverterOptions, ConvertResult, ConvertedNode, Warning } from './types.ts'
+
+/** A single-declaration conversion: the class plus an optional approximation note. */
+interface SingleResult {
+  cls: string
+  note?: string
+}
+
+/** A full-declaration conversion (may expand to several classes). */
+interface DeclResult {
+  classes: string[]
+  notes: string[]
+}
 
 /** A loaded system. `ds` is present only on the live (custom-theme) path. */
 interface LoadedSystem {
@@ -81,8 +93,8 @@ export class CssToTailwind {
   private index?: ReverseIndex
   private colorMatcher?: ColorMatcher
   private variantCtx?: VariantContext
-  /** Memoized declaration conversions (`prop|value` -> class list, empty if none). */
-  private declCache = new Map<string, string[]>()
+  /** Memoized declaration conversions (`prop|value` -> classes + notes). */
+  private declCache = new Map<string, DeclResult>()
 
   constructor(options: ConverterOptions = {}) {
     this.options = {
@@ -110,14 +122,15 @@ export class CssToTailwind {
   async convert(css: string): Promise<ConvertResult> {
     await this.init()
     const nodes: ConvertedNode[] = []
+    const warnings: Warning[] = []
     for (const rule of parseStylesheet(css)) {
       const media = this.atRuleVariants(rule.atRules)
       for (const selector of rule.selectors) {
-        const node = this.convertRule(rule.decls, selector, media)
+        const node = this.convertRule(rule.decls, selector, media, warnings)
         if (node) nodes.push(node)
       }
     }
-    return { nodes }
+    return { nodes, warnings }
   }
 
   /** Maps a rule's at-rule context into variant prefixes, or null if unsupported. */
@@ -140,16 +153,36 @@ export class CssToTailwind {
     return variants
   }
 
-  private convertRule(decls: ParsedDecl[], selector: string, media: string[] | null): ConvertedNode | null {
+  private convertRule(
+    decls: ParsedDecl[],
+    selector: string,
+    media: string[] | null,
+    warnings: Warning[],
+  ): ConvertedNode | null {
     const { base, variants: pseudoVariants } = selectorVariants(selector)
+    const sel = base || selector
     const classes: string[] = []
     const complementary: string[] = []
 
     for (const decl of decls) {
       // If the rule sits under an unsupported at-rule, nothing is convertible.
-      const cls = media === null ? [] : this.convertDeclaration(decl.prop.toLowerCase(), decl.value)
-      if (cls.length) classes.push(...cls)
-      else complementary.push(stringifyDecl(decl))
+      const result = media === null
+        ? { classes: [], notes: [] as string[] }
+        : this.convertDeclaration(decl.prop.toLowerCase(), decl.value)
+      if (result.classes.length) {
+        classes.push(...result.classes)
+        for (const message of result.notes) {
+          warnings.push({ type: 'approximate-color', selector: sel, declaration: stringifyDecl(decl), message })
+        }
+      } else {
+        complementary.push(stringifyDecl(decl))
+        warnings.push({
+          type: 'unconvertible',
+          selector: sel,
+          declaration: stringifyDecl(decl),
+          message: `no Tailwind utility for "${decl.prop}: ${decl.value}"`,
+        })
+      }
     }
 
     if (classes.length === 0 && complementary.length === 0) return null
@@ -159,14 +192,14 @@ export class CssToTailwind {
     const ordered = this.orderClasses(prefixed)
 
     return {
-      selector: base || selector,
+      selector: sel,
       tailwindClasses: ordered,
       complementary: complementary.join('; '),
     }
   }
 
-  /** Converts a declaration to utility class(es), memoized per (prop, value). */
-  private convertDeclaration(prop: string, value: string): string[] {
+  /** Converts a declaration to utility class(es) + notes, memoized per (prop, value). */
+  private convertDeclaration(prop: string, value: string): DeclResult {
     const trimmed = value.trim()
     const cacheKey = `${prop}|${trimmed}`
     const cached = this.declCache.get(cacheKey)
@@ -176,40 +209,51 @@ export class CssToTailwind {
     return result
   }
 
-  private convertDeclarationUncached(prop: string, trimmed: string): string[] {
+  private convertDeclarationUncached(prop: string, trimmed: string): DeclResult {
     // `text-decoration` is a shorthand; its single-keyword form maps to the
     // `text-decoration-line` utility (`none` -> `no-underline`, `underline`).
     if (prop === 'text-decoration' && !/\s/.test(trimmed)) {
-      const cls = this.convertSingle('text-decoration-line', trimmed)
-      if (cls) return [cls]
+      const r = this.convertSingle('text-decoration-line', trimmed)
+      if (r) return { classes: [r.cls], notes: r.note ? [r.note] : [] }
     }
 
     // Multi-value `padding`/`margin` shorthands split into axis utilities
     // (`padding: 0 24px` -> `py-0 px-6`). Falls through if any part can't convert.
     const box = expandBoxShorthand(prop, trimmed)
     if (box) {
-      const out: string[] = []
+      const classes: string[] = []
+      const notes: string[] = []
       let ok = true
       for (const part of box) {
-        const cls = this.convertSingle(part.prop, part.value)
-        if (!cls) { ok = false; break }
-        out.push(cls)
+        const r = this.convertSingle(part.prop, part.value)
+        if (!r) { ok = false; break }
+        classes.push(r.cls)
+        if (r.note) notes.push(r.note)
       }
-      if (ok) return out
+      if (ok) return { classes, notes }
     }
     const single = this.convertSingle(prop, trimmed)
-    return single ? [single] : []
+    return single ? { classes: [single.cls], notes: single.note ? [single.note] : [] } : { classes: [], notes: [] }
   }
 
-  private convertSingle(prop: string, trimmed: string): string | null {
+  private convertSingle(prop: string, trimmed: string): SingleResult | null {
     const index = this.index!
+    const wrap = (cls: string | null): SingleResult | null => (cls ? { cls } : null)
 
     if (isColorValue(trimmed)) {
       const root = index.colorRoots.get(prop)
-      if (!root) return this.arbitraryFor(prop, trimmed)
-      const named = this.colorMatcher!.match(root, trimmed, this.options.colorThreshold)
-      if (named && this.verify(named, prop, trimmed)) return named
-      return this.arbitraryUtilityFor(root, prop, trimmed)
+      if (!root) return wrap(this.arbitraryFor(prop, trimmed))
+      const match = this.colorMatcher!.match(root, trimmed, this.options.colorThreshold)
+      if (match && this.verify(match.className, prop, trimmed)) {
+        // Flag inexact matches so callers can warn. The threshold is above color-
+        // space rounding noise (a canonical hex like #fb2c36 -> red-500 is ~0.001).
+        const note =
+          match.distance > 0.004
+            ? `approximated ${trimmed} to ${match.className} (ΔE ${match.distance.toFixed(3)})`
+            : undefined
+        return { cls: match.className, note }
+      }
+      return wrap(this.arbitraryUtilityFor(root, prop, trimmed))
     }
 
     // Font-size maps to the `--text-*` scale (`20px` -> `text-xl`). Like v3, we
@@ -217,21 +261,21 @@ export class CssToTailwind {
     if (prop === 'font-size') {
       const rem = normalizeLength(trimmed, this.options.remInPx)
       const token = rem ? index.textSizes.get(rem) : undefined
-      if (token && this.verifyProducesFontSize(`text-${token}`, trimmed)) return `text-${token}`
+      if (token && this.verifyProducesFontSize(`text-${token}`, trimmed)) return { cls: `text-${token}` }
     }
 
     // Exact reverse-index match. These entries were built by rendering the class
     // through Tailwind, so they're ground-truth — no need to re-verify.
     const exact = index.decls.get(declKey(prop, trimmed, this.options.remInPx))
-    if (exact) return exact
+    if (exact) return { cls: exact }
 
     const root = index.propToRoot.get(prop)
     if (root && index.spacingRoots.has(root)) {
       const spaced = matchSpacing(root, trimmed, index.spacingBaseRem, this.options.remInPx)
-      if (spaced && this.verify(spaced, prop, trimmed)) return spaced
+      if (spaced && this.verify(spaced, prop, trimmed)) return { cls: spaced }
     }
-    if (root) return this.arbitraryUtilityFor(root, prop, trimmed)
-    return this.arbitraryFor(prop, trimmed)
+    if (root) return wrap(this.arbitraryUtilityFor(root, prop, trimmed))
+    return wrap(this.arbitraryFor(prop, trimmed))
   }
 
   private arbitraryUtilityFor(root: string, prop: string, value: string): string | null {

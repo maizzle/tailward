@@ -12,10 +12,10 @@ describe('color matcher', () => {
   const m = createColorMatcher(palette)
 
   it('maps the transparent keyword', () => {
-    expect(m.match('bg', 'transparent', 0.02)).toBe('bg-transparent')
+    expect(m.match('bg', 'transparent', 0.02)).toEqual({ className: 'bg-transparent', distance: 0 })
   })
   it('maps currentColor (case-insensitive)', () => {
-    expect(m.match('text', 'currentColor', 0.02)).toBe('text-current')
+    expect(m.match('text', 'currentColor', 0.02)).toEqual({ className: 'text-current', distance: 0 })
   })
   it('returns null for an invalid color', () => {
     expect(m.match('text', 'not-a-color', 0.02)).toBeNull()
@@ -23,14 +23,16 @@ describe('color matcher', () => {
   it('defers translucent colors to arbitrary', () => {
     expect(m.match('bg', 'rgba(255,0,0,0.5)', 0.02)).toBeNull()
   })
-  it('matches an exact palette color', () => {
-    expect(m.match('text', 'oklch(63.7% 0.237 25.331)', 0.02)).toBe('text-red-500')
+  it('matches an exact palette color with ~zero distance', () => {
+    const r = m.match('text', 'oklch(63.7% 0.237 25.331)', 0.02)
+    expect(r?.className).toBe('text-red-500')
+    expect(r?.distance).toBeLessThan(1e-4)
   })
   it('returns null when nothing is within threshold', () => {
     expect(m.match('bg', '#00ff00', 0)).toBeNull()
   })
   it('matches white/black', () => {
-    expect(m.match('bg', '#ffffff', 0.02)).toBe('bg-white')
+    expect(m.match('bg', '#ffffff', 0.02)?.className).toBe('bg-white')
   })
 })
 
