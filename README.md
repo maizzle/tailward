@@ -216,6 +216,10 @@ interface ConvertResult {
 }
 ```
 
+With `{ positions: true }` each node also carries a `position` — `{ start, end,
+line, column }` mapping the rule back to the input, for editor "convert selection"
+integrations. Off by default (zero output overhead).
+
 `warnings` surfaces what the conversion glossed over — colors matched to a
 *near* palette token rather than an exact one, and declarations left
 unconverted:
@@ -262,6 +266,7 @@ toClassMap(result) // { '.a': 'flex p-4' }
 | `colorThreshold` | `number` | `0.02` | Max OKLab distance to match a palette color; `0` = exact only. |
 | `canonicalize` | `boolean` | `true` | Prefer named functional utilities for bare numbers (`z-60` over `z-[60]`). |
 | `important` | `boolean` | `false` | Preserve `!important` as the v4 trailing bang (`text-red-500!`, `sm:text-red-500!`); otherwise dropped. |
+| `positions` | `boolean` | `false` | Attach a `position` (`{ start, end, line, column }`) to each node, mapping it back to the source. |
 | `maxSpacingSteps` | `number` | `96` | Largest spacing multiplier reversed to a scale utility; larger lengths stay arbitrary (`600px` → `w-[600px]` not `w-150`). `Infinity` to reverse any multiple. |
 
 ## How it works

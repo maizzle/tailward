@@ -39,6 +39,12 @@ export interface ConverterOptions {
    */
   canonicalize?: boolean
   /**
+   * Attach a `position` (source offsets + line/column) to each converted node, so an
+   * editor integration can map a rule back to its place in the input. Off by default.
+   * @default false
+   */
+  positions?: boolean
+  /**
    * Preserve `!important` from the source by emitting the v4 trailing-bang form
    * (`color: red !important` -> `text-red-500!`, `sm:text-red-500!`). When `false`,
    * importance is dropped and the utility is emitted plain.
@@ -56,6 +62,17 @@ export interface ConverterOptions {
   maxSpacingSteps?: number
 }
 
+export interface SourcePosition {
+  /** Char offset of the rule's start in the input. */
+  start: number
+  /** Char offset just past the rule's closing brace. */
+  end: number
+  /** 1-based line of the rule's start. */
+  line: number
+  /** 1-based column of the rule's start. */
+  column: number
+}
+
 export interface ConvertedNode {
   /** The original selector (without pseudo/at-rule context folded into variants). */
   selector: string
@@ -63,6 +80,8 @@ export interface ConvertedNode {
   tailwindClasses: string[]
   /** Declarations that could not be converted, serialized back to CSS. */
   complementary: string
+  /** Source span of the originating rule. Present only when the `positions` option is on. */
+  position?: SourcePosition
 }
 
 export interface Warning {

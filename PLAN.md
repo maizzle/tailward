@@ -105,8 +105,13 @@ _Original plan:_ New `src/matchers/functions.ts`. Declaration-level converters r
 
 ## Phase 3 — polish
 
-### 5. Source positions (opt-in)
-- `css-parser` already walks offsets — track `start`/`end` char offsets (and compute line/col) on `ParsedDecl`/`ParsedRule` when `opts.positions` is set. Surface on result nodes. Enables editor "convert selection". Keep off by default (zero overhead).
+### 5. Source positions (opt-in) ✅ DONE
+`positions?: boolean` option. `css-parser` was refactored to work over absolute
+offsets (range-based `segments`/`walk`), and `stripComments` now blanks comments
+in place (length- and newline-preserving) so offsets map onto the original string.
+`ParsedRule` carries `start`/`end` (selector-start, past closing brace);
+`convert()` attaches `position: { start, end, line, column }` to each node when the
+option is on. Rule-level only (decl-level descoped as speculative). 3 tests.
 
 ### 6. Output helpers ✅ DONE
 `toApply(result)` (@apply rules per selector, complementary kept as raw CSS) and

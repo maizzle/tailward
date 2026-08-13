@@ -3,6 +3,10 @@
  * costs ~15ms just to import — dominating cold start. We only need flat rules with
  * their declarations and at-rule (media/supports) context, so a focused tokenizer
  * is enough (and far cheaper).
+ *
+ * The parser works over absolute offsets into the (comment-stripped) source so each
+ * rule can report where it came from. Comment stripping preserves length and
+ * newlines, so those offsets map straight back onto the original string.
  */
 
 export interface ParsedDecl {
@@ -21,11 +25,17 @@ export interface ParsedRule {
   decls: ParsedDecl[]
   /** Enclosing at-rules, outermost first. */
   atRules: AtRuleContext[]
+  /** Char offset of the rule's start (its prelude) in the source. */
+  start: number
+  /** Char offset just past the rule's closing brace. */
+  end: number
 }
 
-type Segment = { kind: 'decl'; text: string } | { kind: 'block'; prelude: string; body: string }
+type Segment =
+  | { kind: 'decl'; start: number; end: number }
+  | { kind: 'block'; preludeStart: number; brace: number; bodyStart: number; bodyEnd: number; end: number }
 
-/** Removes `/* *\/` comments, ignoring `/*` inside strings. */
+/** Blanks out `/* *\/` comments in place (ignoring `/*` in strings), preserving length + newlines. */
 function stripComments(css: string): string {
   let out = ''
   let quote = ''
@@ -39,7 +49,9 @@ function stripComments(css: string): string {
       out += c
     } else if (c === '/' && css[i + 1] === '*') {
       const end = css.indexOf('*/', i + 2)
-      i = end === -1 ? css.length : end + 1
+      const stop = end === -1 ? css.length : end + 2
+      for (; i < stop; i++) out += css[i] === '\n' ? '\n' : ' '
+      i-- // the for-loop's i++ will re-advance past `stop`
     } else {
       out += c
     }
@@ -47,41 +59,39 @@ function stripComments(css: string): string {
   return out
 }
 
-/** Splits a block into declarations (`a: b`) and nested blocks (`sel { ... }`). */
-function segments(block: string): Segment[] {
+/** Splits `css[from, to)` into declarations and nested blocks, tracking absolute offsets. */
+function segments(css: string, from: number, to: number): Segment[] {
   const out: Segment[] = []
   let depth = 0
   let quote = ''
-  let start = 0
-  for (let i = 0; i < block.length; i++) {
-    const c = block[i]
+  let start = from
+  for (let i = from; i < to; i++) {
+    const c = css[i]
     if (quote) {
-      if (c === quote && block[i - 1] !== '\\') quote = ''
+      if (c === quote && css[i - 1] !== '\\') quote = ''
       continue
     }
     if (c === '"' || c === "'") quote = c
     else if (c === '(' || c === '[') depth++
     else if (c === ')' || c === ']') depth--
     else if (depth === 0 && c === '{') {
-      const prelude = block.slice(start, i)
-      const close = matchBrace(block, i)
-      out.push({ kind: 'block', prelude, body: block.slice(i + 1, close) })
+      const close = matchBrace(css, i, to)
+      out.push({ kind: 'block', preludeStart: start, brace: i, bodyStart: i + 1, bodyEnd: close, end: Math.min(close + 1, to) })
       i = close
       start = i + 1
     } else if (depth === 0 && c === ';') {
-      out.push({ kind: 'decl', text: block.slice(start, i) })
+      out.push({ kind: 'decl', start, end: i })
       start = i + 1
     }
   }
-  const tail = block.slice(start).trim()
-  if (tail) out.push({ kind: 'decl', text: tail })
+  if (start < to && css.slice(start, to).trim()) out.push({ kind: 'decl', start, end: to })
   return out
 }
 
-function matchBrace(s: string, open: number): number {
+function matchBrace(s: string, open: number, to: number): number {
   let depth = 0
   let quote = ''
-  for (let i = open; i < s.length; i++) {
+  for (let i = open; i < to; i++) {
     const c = s[i]
     if (quote) {
       if (c === quote && s[i - 1] !== '\\') quote = ''
@@ -89,7 +99,7 @@ function matchBrace(s: string, open: number): number {
     else if (c === '{') depth++
     else if (c === '}' && --depth === 0) return i
   }
-  return s.length
+  return to
 }
 
 /** Splits a selector list on top-level commas (ignoring `:not(a, b)`). */
@@ -125,38 +135,45 @@ function parseDecl(text: string): ParsedDecl | null {
   return { prop, value, important }
 }
 
-function walk(block: string, atRules: AtRuleContext[], out: ParsedRule[]): void {
+/** Advances past leading whitespace so a rule's span starts at its first real character. */
+function skipSpace(css: string, from: number, to: number): number {
+  let i = from
+  while (i < to && /\s/.test(css[i])) i++
+  return i
+}
+
+function walk(css: string, from: number, to: number, atRules: AtRuleContext[], out: ParsedRule[]): void {
   const loose: ParsedDecl[] = []
-  for (const seg of segments(block)) {
+  for (const seg of segments(css, from, to)) {
     if (seg.kind === 'decl') {
-      const decl = parseDecl(seg.text)
+      const decl = parseDecl(css.slice(seg.start, seg.end))
       if (decl) loose.push(decl)
       continue
     }
-    const prelude = seg.prelude.trim()
+    const prelude = css.slice(seg.preludeStart, seg.brace).trim()
     if (prelude.startsWith('@')) {
       const sp = prelude.search(/\s/)
       const name = (sp === -1 ? prelude : prelude.slice(0, sp)).slice(1)
       const params = sp === -1 ? '' : prelude.slice(sp).trim()
-      walk(seg.body, [...atRules, { name, params }], out)
+      walk(css, seg.bodyStart, seg.bodyEnd, [...atRules, { name, params }], out)
     } else {
       const decls: ParsedDecl[] = []
-      for (const inner of segments(seg.body)) {
+      for (const inner of segments(css, seg.bodyStart, seg.bodyEnd)) {
         if (inner.kind === 'decl') {
-          const decl = parseDecl(inner.text)
+          const decl = parseDecl(css.slice(inner.start, inner.end))
           if (decl) decls.push(decl)
         }
       }
-      out.push({ selectors: splitSelectors(prelude), decls, atRules })
+      out.push({ selectors: splitSelectors(prelude), decls, atRules, start: skipSpace(css, seg.preludeStart, seg.brace), end: seg.end })
     }
   }
   // Bare declarations (an inline-style list with no selector).
-  if (loose.length) out.push({ selectors: [''], decls: loose, atRules })
+  if (loose.length) out.push({ selectors: [''], decls: loose, atRules, start: skipSpace(css, from, to), end: to })
 }
 
-/** Parses CSS into a flat list of rules with their at-rule context. */
+/** Parses CSS into a flat list of rules with their at-rule context and source span. */
 export function parseStylesheet(css: string): ParsedRule[] {
   const out: ParsedRule[] = []
-  walk(stripComments(css), [], out)
+  walk(stripComments(css), 0, css.length, [], out)
   return out
 }

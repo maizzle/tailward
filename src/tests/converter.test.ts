@@ -317,6 +317,34 @@ describe('CssToTailwind', () => {
     })
   })
 
+  describe('source positions', () => {
+    it('omits positions by default', async () => {
+      const { nodes } = await c.convert('.a { display: flex; }')
+      expect(nodes[0].position).toBeUndefined()
+    })
+
+    it('reports a rule span that slices back to the source', async () => {
+      const css = '.a { display: flex }\n\n@media (min-width: 48rem) {\n  .b { display: block }\n}'
+      const positioned = new CssToTailwind({ positions: true })
+      await positioned.convert('.x{}')
+      const { nodes } = await positioned.convert(css)
+      expect(nodes[0].position).toEqual({ start: 0, end: 20, line: 1, column: 1 })
+      expect(css.slice(nodes[0].position!.start, nodes[0].position!.end)).toBe('.a { display: flex }')
+      // Nested rule points at its selector, not the enclosing at-rule.
+      expect(nodes[1].position).toMatchObject({ line: 4, column: 3 })
+      expect(css.slice(nodes[1].position!.start, nodes[1].position!.end)).toBe('.b { display: block }')
+    })
+
+    it('keeps offsets accurate across a length-preserving comment strip', async () => {
+      const css = '/* leading comment */\n.z { color: #fb2c36 }'
+      const positioned = new CssToTailwind({ positions: true })
+      await positioned.convert('.x{}')
+      const { nodes } = await positioned.convert(css)
+      expect(nodes[0].position!.line).toBe(2)
+      expect(css.slice(nodes[0].position!.start, nodes[0].position!.end)).toBe('.z { color: #fb2c36 }')
+    })
+  })
+
   describe('important option', () => {
     it('drops !important by default', async () => {
       expect(await classesFor('.a { color: #fb2c36 !important; }')).toEqual(['text-red-500'])

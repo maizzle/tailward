@@ -9,7 +9,7 @@ import { arbitraryUtility, arbitraryProperty } from './matchers/arbitrary.ts'
 import { expandBoxShorthand } from './matchers/shorthand.ts'
 import { decomposeTransform, decomposeFilter, decomposeGradient, type FunctionsContext } from './matchers/functions.ts'
 import { selectorVariants, mediaVariant, containerVariant, canonicalizeMedia, type VariantContext } from './variants.ts'
-import type { ConversionSummary, ConverterOptions, ConvertResult, ConvertedNode, Warning } from './types.ts'
+import type { ConversionSummary, ConverterOptions, ConvertResult, ConvertedNode, SourcePosition, Warning } from './types.ts'
 
 /** A utility class carried through the pipeline with its importance flag. */
 interface Cls {
@@ -104,6 +104,7 @@ export class CssToTailwind {
       // keep oversized one-offs (`width: 600px` -> `w-[600px]`) arbitrary.
       maxSpacingSteps: options.maxSpacingSteps ?? 96,
       important: options.important ?? false,
+      positions: options.positions ?? false,
       theme: options.theme,
       css: options.css,
       base: options.base,
@@ -131,7 +132,10 @@ export class CssToTailwind {
       for (const selector of rule.selectors) {
         totalDecls += rule.decls.length
         const node = this.convertRule(rule.decls, selector, media, warnings)
-        if (node) nodes.push(node)
+        if (node) {
+          if (this.options.positions) node.position = positionOf(css, rule.start, rule.end)
+          nodes.push(node)
+        }
       }
     }
     return { nodes, warnings, summary: summarize(nodes, warnings, totalDecls) }
@@ -489,6 +493,21 @@ function stripVariants(className: string): string {
 
 function stringifyDecl(decl: ParsedDecl): string {
   return `${decl.prop}: ${decl.value}${decl.important ? ' !important' : ''}`
+}
+
+/** Computes a rule's 1-based line/column from its char offsets in the source. */
+function positionOf(css: string, start: number, end: number): SourcePosition {
+  let line = 1
+  let column = 1
+  for (let i = 0; i < start; i++) {
+    if (css[i] === '\n') {
+      line++
+      column = 1
+    } else {
+      column++
+    }
+  }
+  return { start, end, line, column }
 }
 
 /** Tallies conversion coverage. Each unconvertible declaration emits exactly one warning. */
