@@ -1,5 +1,5 @@
 import type { ReverseIndex } from './reverse-index.ts'
-import { declKey } from './reverse-index.ts'
+import { declKey, collectTextLineHeights } from './reverse-index.ts'
 import { normalizeLength } from './normalize.ts'
 import { parseStylesheet } from './css-parser.ts'
 import { stockTheme } from './generated/stock-theme.ts'
@@ -58,17 +58,19 @@ export function buildIndexFromTokens(
     }
   }
 
+  const vars = new Map(Object.entries(themeVars))
   return {
     decls,
     propToRoot: new Map(Object.entries(data.propToRoot)),
     colorRoots: new Map(Object.entries(data.colorRoots)),
     palette: new Map(Object.entries(paletteObj)),
     textSizes,
+    textLineHeights: collectTextLineHeights(vars, remInPx),
     spacingRoots: new Set(data.spacingRoots),
     spacingBaseRem,
     numericRoots: new Set(data.numericRoots),
     rootRanks: new Map(Object.entries(data.rootRanks)),
-    vars: new Map(Object.entries(themeVars)),
+    vars,
   }
 }
 

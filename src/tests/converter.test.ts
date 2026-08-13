@@ -146,9 +146,15 @@ describe('CssToTailwind', () => {
     expect(nodes[0].tailwindClasses).toEqual(['w-[168px]']) // 42 > 24
   })
 
-  it('fuses font-size + line-height into the /leading shorthand', async () => {
-    expect(await classesFor('.a { font-size: 20px; line-height: 28px; }')).toEqual(['text-xl/7'])
-    expect(await classesFor('.a { font-size: 14px; line-height: 20px; }')).toEqual(['text-sm/5'])
+  it('collapses a font-size + its default line-height into the bare size token', async () => {
+    // 28px is text-xl's default line-height (text-xl already sets it) -> bare text-xl
+    expect(await classesFor('.a { font-size: 20px; line-height: 28px; }')).toEqual(['text-xl'])
+    expect(await classesFor('.a { font-size: 14px; line-height: 20px; }')).toEqual(['text-sm'])
+  })
+
+  it('fuses a divergent line-height into the /leading shorthand', async () => {
+    expect(await classesFor('.a { font-size: 20px; line-height: 20px; }')).toEqual(['text-xl/5'])
+    expect(await classesFor('.a { font-size: 14px; line-height: 16px; }')).toEqual(['text-sm/4'])
   })
 
   it('maps a zero-alpha color and the default radius to bare tokens', async () => {
@@ -158,7 +164,7 @@ describe('CssToTailwind', () => {
 
   it('does not fuse a text color with a line-height', async () => {
     expect(await classesFor('.a { color: #030712; font-size: 20px; line-height: 28px; }')).toEqual([
-      'text-gray-950', 'text-xl/7',
+      'text-gray-950', 'text-xl',
     ])
   })
 

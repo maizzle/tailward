@@ -1,6 +1,6 @@
 import type { DesignSystem } from './design-system.ts'
 import { isColor } from './color.ts'
-import { resolveVars, evalCalc, normalizeLength, normalizeValue } from './normalize.ts'
+import { resolveVars, evalCalc, normalizeLength, normalizeValue, absoluteLineHeight } from './normalize.ts'
 import { canonicalizeMedia } from './variants.ts'
 
 /**
@@ -40,6 +40,8 @@ export interface ReverseIndex {
   palette: Map<string, string>
   /** Normalized font-size (`1.25rem`) -> `--text-*` token (`xl`). */
   textSizes: Map<string, string>
+  /** `--text-*` token (`sm`) -> its default line-height, so `text-sm` can absorb a matching one. */
+  textLineHeights: Map<string, string>
   /** Roots that derive from the `--spacing` multiplier (e.g. `p`, `m`, `gap`). */
   spacingRoots: Set<string>
   /** The `--spacing` base in rem (default `0.25`). */
@@ -88,6 +90,23 @@ interface Decl {
 /** Resolves a generated utility value to a concrete, comparable form. */
 function concretize(value: string, vars: Map<string, string>): string {
   return evalCalc(resolveVars(value, vars)).replace(/\s+/g, ' ').trim()
+}
+
+/** Maps each `--text-*` token to its default line-height, resolved to absolute rem. */
+export function collectTextLineHeights(vars: Map<string, string>, remInPx: number): Map<string, string> {
+  const map = new Map<string, string>()
+  for (const [name, value] of vars) {
+    const m = /^--text-(.+)--line-height$/.exec(name)
+    if (!m) continue
+    const fontSize = vars.get(`--text-${m[1]}`)
+    const abs = absoluteLineHeight(
+      concretize(value, vars),
+      fontSize ? concretize(fontSize, vars) : undefined,
+      remInPx,
+    )
+    if (abs) map.set(m[1], abs)
+  }
+  return map
 }
 
 // A single class selector once escaped chars are removed: `.p-4`, `.p-[13px]`
@@ -321,8 +340,9 @@ export function buildReverseIndex(ds: DesignSystem, remInPx: number): ReverseInd
   const rootRanks = computeRootRanks(ds, names)
 
   return {
-    decls, propToRoot, colorRoots, palette, textSizes, spacingRoots,
-    spacingBaseRem, numericRoots, rootRanks, vars,
+    decls, propToRoot, colorRoots, palette, textSizes,
+    textLineHeights: collectTextLineHeights(vars, remInPx),
+    spacingRoots, spacingBaseRem, numericRoots, rootRanks, vars,
   }
 }
 

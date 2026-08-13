@@ -2,7 +2,7 @@ import { parseStylesheet, type ParsedDecl, type AtRuleContext } from './css-pars
 import type { DesignSystem } from './design-system.ts'
 import { toOklab, oklabDistance } from './color.ts'
 import { declKey, isColorValue, resolveClassDecls, type ReverseIndex } from './reverse-index.ts'
-import { normalizeLength } from './normalize.ts'
+import { normalizeLength, absoluteLineHeight } from './normalize.ts'
 import { createColorMatcher, type ColorMatcher } from './matchers/color.ts'
 import { matchSpacing } from './matchers/spacing.ts'
 import { arbitraryUtility, arbitraryProperty } from './matchers/arbitrary.ts'
@@ -158,7 +158,9 @@ export class CssToTailwind {
     const classes: string[] = []
     const complementary: string[] = []
     let fontSizeCls: string | undefined
+    let fontSizeValue: string | undefined
     let leadingCls: string | undefined
+    let lineHeightValue: string | undefined
 
     for (const decl of decls) {
       const prop = decl.prop.toLowerCase()
@@ -168,8 +170,10 @@ export class CssToTailwind {
         // Remember the font-size / line-height classes so we can fuse them (below).
         if (prop === 'font-size' && result.classes.length === 1 && result.classes[0].startsWith('text-')) {
           fontSizeCls = result.classes[0]
+          fontSizeValue = decl.value.trim()
         } else if (prop === 'line-height' && result.classes.length === 1 && result.classes[0].startsWith('leading-')) {
           leadingCls = result.classes[0]
+          lineHeightValue = decl.value.trim()
         }
         classes.push(...result.classes)
         for (const message of result.notes) {
@@ -188,12 +192,20 @@ export class CssToTailwind {
 
     if (classes.length === 0 && complementary.length === 0) return null
 
-    // Fuse a font-size + line-height pair into `text-xl/7`, then recombine equal
-    // opposite longhands (`pl-6 pr-6` -> `px-6`, corner radii -> `rounded-t`).
+    // A v4 `text-<size>` utility already carries a default line-height, so drop a
+    // matching line-height entirely (`text-sm`); only keep the `/N` shorthand when
+    // it diverges from the active theme's default (`text-sm/6`). Then recombine
+    // equal opposite longhands (`pl-6 pr-6` -> `px-6`, corner radii -> `rounded-t`).
     let out = classes
     if (fontSizeCls && leadingCls) {
-      out = out.filter((c) => c !== fontSizeCls && c !== leadingCls)
-      out.push(`${fontSizeCls}/${leadingCls.slice('leading-'.length)}`)
+      const token = fontSizeCls.startsWith('text-') && !fontSizeCls.includes('[') ? fontSizeCls.slice('text-'.length) : undefined
+      const defaultLh = token ? this.index!.textLineHeights.get(token) : undefined
+      const inputLh =
+        lineHeightValue !== undefined ? absoluteLineHeight(lineHeightValue, fontSizeValue, this.options.remInPx) : null
+      const matchesDefault = defaultLh !== undefined && inputLh !== null && inputLh === defaultLh
+      out = matchesDefault
+        ? out.filter((c) => c !== leadingCls) // text-<token> already sets this line-height
+        : [...out.filter((c) => c !== fontSizeCls && c !== leadingCls), `${fontSizeCls}/${leadingCls.slice('leading-'.length)}`]
     }
     out = combineDirectional(out)
 

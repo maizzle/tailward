@@ -139,3 +139,26 @@ export function normalizeLength(value: string, remInPx: number): string | null {
 export function normalizeValue(value: string): string {
   return value.replace(/\s+/g, ' ').trim().toLowerCase()
 }
+
+/** Parses a length to pixels (`20px`->20, `1.25rem`->20); null if unitless/invalid. */
+function toPixels(value: string, remInPx: number): number | null {
+  const m = /^(-?\d*\.?\d+)(px|rem|em)$/i.exec(value.trim())
+  if (!m) return null
+  return parseFloat(m[1]) * (m[2].toLowerCase() === 'px' ? 1 : remInPx)
+}
+
+/**
+ * Resolves a line-height to an absolute rem string so a length (`20px`) and a
+ * unitless ratio (`1.4286`, resolved against the font-size) compare equal.
+ * Returns null for keywords like `normal`.
+ */
+export function absoluteLineHeight(lineHeight: string, fontSize: string | undefined, remInPx: number): string | null {
+  const lh = lineHeight.trim().toLowerCase()
+  const px = toPixels(lh, remInPx)
+  if (px !== null) return normalizeLength(`${px}px`, remInPx)
+  if (/^\d*\.?\d+$/.test(lh) && fontSize) {
+    const fsPx = toPixels(fontSize.trim().toLowerCase(), remInPx)
+    if (fsPx !== null) return normalizeLength(`${parseFloat(lh) * fsPx}px`, remInPx)
+  }
+  return null
+}
