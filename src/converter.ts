@@ -92,7 +92,10 @@ export class CssToTailwind {
       arbitrary: options.arbitrary ?? true,
       colorThreshold: options.colorThreshold ?? 0.02,
       canonicalize: options.canonicalize ?? true,
-      maxSpacingSteps: options.maxSpacingSteps ?? Infinity,
+      // Default to Tailwind's spacing-scale ceiling: reverse multipliers within
+      // the conventional range (incl. dynamic in-between steps like `p-13`), but
+      // keep oversized one-offs (`width: 600px` -> `w-[600px]`) arbitrary.
+      maxSpacingSteps: options.maxSpacingSteps ?? 96,
       theme: options.theme,
       css: options.css,
       base: options.base,

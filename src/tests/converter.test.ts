@@ -126,15 +126,24 @@ describe('CssToTailwind', () => {
     expect(await classesFor('.a { padding: 13px 16px; }')).toEqual(['px-4', 'py-3.25'])
   })
 
-  it('caps oversized spacing to arbitrary via maxSpacingSteps', async () => {
-    const capped = new CssToTailwind({ remInPx: 16, maxSpacingSteps: 96 })
-    await capped.convert('.x{}')
-    const cls = async (d: string) => (await capped.convert(`.a { ${d} }`)).nodes[0].tailwindClasses.join(' ')
-    expect(await cls('width: 600px')).toBe('w-[600px]') // 150 > 96
-    expect(await cls('width: 168px')).toBe('w-42') // 42 <= 96, stays on scale
-    expect(await cls('padding: 12px')).toBe('p-3') // small values unaffected
-    // Default (off) reverses everything, including the oversized one.
-    expect(await classesFor('.a { width: 600px; }')).toEqual(['w-150'])
+  it('caps oversized spacing to arbitrary by default (scale ceiling 96)', async () => {
+    expect(await classesFor('.a { width: 600px; }')).toEqual(['w-[600px]']) // 150 > 96
+    expect(await classesFor('.a { width: 168px; }')).toEqual(['w-42']) // 42 <= 96, on scale
+    expect(await classesFor('.a { padding: 3.25rem; }')).toEqual(['p-13']) // in-range dynamic step
+  })
+
+  it('maxSpacingSteps: Infinity reverses any multiple', async () => {
+    const uncapped = new CssToTailwind({ remInPx: 16, maxSpacingSteps: Infinity })
+    await uncapped.convert('.x{}')
+    const { nodes } = await uncapped.convert('.a { width: 600px; }')
+    expect(nodes[0].tailwindClasses).toEqual(['w-150'])
+  })
+
+  it('maxSpacingSteps can be stricter', async () => {
+    const strict = new CssToTailwind({ remInPx: 16, maxSpacingSteps: 24 })
+    await strict.convert('.x{}')
+    const { nodes } = await strict.convert('.a { width: 168px; }')
+    expect(nodes[0].tailwindClasses).toEqual(['w-[168px]']) // 42 > 24
   })
 
   it('maps @supports to a supports variant', async () => {

@@ -39,11 +39,12 @@ export interface ConverterOptions {
    */
   canonicalize?: boolean
   /**
-   * Largest spacing multiplier to emit as a scale utility (`p-4`, `w-96`).
-   * Lengths whose multiplier exceeds this become arbitrary values instead
-   * (`width: 600px` -> `w-[600px]` rather than `w-150`). Off by default — any
-   * clean 0.25-step reverses to the scale.
-   * @default Infinity
+   * Largest spacing multiplier to emit as a scale utility. Lengths whose
+   * multiplier exceeds it become arbitrary values instead (`width: 600px` ->
+   * `w-[600px]` rather than `w-150`). Defaults to Tailwind's spacing-scale
+   * ceiling (96) — in-range dynamic steps like `p-13` still reverse; set
+   * `Infinity` to reverse any multiple, or a lower number to be stricter.
+   * @default 96
    */
   maxSpacingSteps?: number
 }
