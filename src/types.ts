@@ -38,6 +38,14 @@ export interface ConverterOptions {
    * @default true
    */
   canonicalize?: boolean
+  /**
+   * Largest spacing multiplier to emit as a scale utility (`p-4`, `w-96`).
+   * Lengths whose multiplier exceeds this become arbitrary values instead
+   * (`width: 600px` -> `w-[600px]` rather than `w-150`). Off by default — any
+   * clean 0.25-step reverses to the scale.
+   * @default Infinity
+   */
+  maxSpacingSteps?: number
 }
 
 export interface ConvertedNode {

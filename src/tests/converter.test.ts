@@ -126,6 +126,17 @@ describe('CssToTailwind', () => {
     expect(await classesFor('.a { padding: 13px 16px; }')).toEqual(['px-4', 'py-3.25'])
   })
 
+  it('caps oversized spacing to arbitrary via maxSpacingSteps', async () => {
+    const capped = new CssToTailwind({ remInPx: 16, maxSpacingSteps: 96 })
+    await capped.convert('.x{}')
+    const cls = async (d: string) => (await capped.convert(`.a { ${d} }`)).nodes[0].tailwindClasses.join(' ')
+    expect(await cls('width: 600px')).toBe('w-[600px]') // 150 > 96
+    expect(await cls('width: 168px')).toBe('w-42') // 42 <= 96, stays on scale
+    expect(await cls('padding: 12px')).toBe('p-3') // small values unaffected
+    // Default (off) reverses everything, including the oversized one.
+    expect(await classesFor('.a { width: 600px; }')).toEqual(['w-150'])
+  })
+
   it('maps @supports to a supports variant', async () => {
     const classes = await classesFor('@supports (display: grid) { .a { display: flex; } }')
     expect(classes).toEqual(['supports-[display:grid]:flex'])

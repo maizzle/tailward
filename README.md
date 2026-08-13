@@ -168,6 +168,7 @@ One-shot convenience wrapper around `new CssToTailwind(options).convert(css)`.
 | `arbitrary` | `boolean` | `true` | Emit arbitrary values when nothing matches; else keep as raw CSS. |
 | `colorThreshold` | `number` | `0.02` | Max OKLab distance to match a palette color; `0` = exact only. |
 | `canonicalize` | `boolean` | `true` | Prefer named functional utilities for bare numbers (`z-60` over `z-[60]`). |
+| `maxSpacingSteps` | `number` | `Infinity` | Cap the spacing multiplier reversed to a scale utility; larger lengths stay arbitrary (`600px` → `w-[600px]` not `w-150`). |
 
 ## How it works
 

@@ -92,6 +92,7 @@ export class CssToTailwind {
       arbitrary: options.arbitrary ?? true,
       colorThreshold: options.colorThreshold ?? 0.02,
       canonicalize: options.canonicalize ?? true,
+      maxSpacingSteps: options.maxSpacingSteps ?? Infinity,
       theme: options.theme,
       css: options.css,
       base: options.base,
@@ -261,7 +262,9 @@ export class CssToTailwind {
 
     const root = index.propToRoot.get(prop)
     if (root && index.spacingRoots.has(root)) {
-      const spaced = matchSpacing(root, trimmed, index.spacingBaseRem, this.options.remInPx)
+      const spaced = matchSpacing(
+        root, trimmed, index.spacingBaseRem, this.options.remInPx, this.options.maxSpacingSteps,
+      )
       if (spaced && this.verify(spaced, prop, trimmed)) return { cls: spaced }
     }
     if (root) return wrap(this.arbitraryUtilityFor(root, prop, trimmed))
