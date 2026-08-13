@@ -290,7 +290,7 @@ Every entry point takes the same options object - the `CssToTailwind` constructo
 | `positions` | `boolean` | `false` | Attach a `position` (`{ start, end, line, column }`) to each node, mapping it back to the source. |
 | `maxSpacingSteps` | `number` | `96` | Largest spacing multiplier reversed to a scale utility; larger lengths stay arbitrary (`600px` becomes `w-[600px]`, not `w-150`). Use `Infinity` to reverse any multiple. |
 
-A few of them in practice:
+A few of them in practice, on `convertCss`:
 
 ```ts
 import { convertCss } from 'tailward'
@@ -300,14 +300,23 @@ await convertCss('.a { color: #f9323d }')                        // → text-red
 await convertCss('.a { color: #f9323d }', { colorThreshold: 0 }) // → text-[#f9323d]
 
 // maxSpacingSteps: reverse any spacing multiple, not just the conventional range.
-await convertCss('.a { width: 600px }')                                // → w-[600px]
-await convertCss('.a { width: 600px }', { maxSpacingSteps: Infinity })  // → w-150
-
-// remInPx: normalize px against a different root font size.
-await convertCss('.a { padding: 16px }', { remInPx: 8 }) // → p-8
+await convertCss('.a { width: 600px }', { maxSpacingSteps: Infinity }) // → w-150
 
 // arbitrary: keep unmatched declarations as raw CSS instead of an arbitrary value.
 await convertCss('.a { width: 33.7% }', { arbitrary: false }) // → kept in node.complementary, no class
+```
+
+The same options flow through `convertHtml`, since it runs the converter under the hood:
+
+```ts
+import { convertHtml } from 'tailward'
+
+// colorThreshold: 0 keeps the color arbitrary; remInPx: 8 rescales the padding.
+const { html } = await convertHtml(
+  '<a style="color: #f9323d; padding: 16px">Go</a>',
+  { colorThreshold: 0, remInPx: 8 },
+)
+// <a class="p-8 text-[#f9323d]">Go</a>
 ```
 
 ## How it works
