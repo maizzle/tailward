@@ -1,0 +1,46 @@
+# Publishes to npm when you push a version tag (e.g. `v1.2.0`).
+# Never runs on a normal push - only on a tag you create by hand.
+
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      - run: npm ci
+
+      # Guard: the pushed tag must match the version in package.json.
+      - name: Verify tag matches package.json
+        run: |
+          PKG="v$(node -p "require('./package.json').version")"
+          if [ "$PKG" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json ($PKG)"
+            exit 1
+          fi
+
+      - run: npx tsc --noEmit
+      - run: npm test
+        env:
+          CI: true
+
+      # `prepublishOnly` runs the build, so dist/ is fresh. Publishes only what's
+      # in `files` (dist). Once the repo is public, add `--provenance` here and
+      # `id-token: write` to `permissions` above for a signed attestation.
+      - run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
