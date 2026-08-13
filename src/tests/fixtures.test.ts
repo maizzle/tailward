@@ -43,8 +43,7 @@ describe('realistic stylesheet', () => {
           "complementary": "",
           "selector": ".button",
           "tailwindClasses": [
-            "md:pr-8",
-            "md:pl-8",
+            "md:px-8",
           ],
         },
         {

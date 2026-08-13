@@ -146,6 +146,26 @@ describe('CssToTailwind', () => {
     expect(nodes[0].tailwindClasses).toEqual(['w-[168px]']) // 42 > 24
   })
 
+  it('fuses font-size + line-height into the /leading shorthand', async () => {
+    expect(await classesFor('.a { font-size: 20px; line-height: 28px; }')).toEqual(['text-xl/7'])
+    expect(await classesFor('.a { font-size: 14px; line-height: 20px; }')).toEqual(['text-sm/5'])
+  })
+
+  it('does not fuse a text color with a line-height', async () => {
+    expect(await classesFor('.a { color: #030712; font-size: 20px; line-height: 28px; }')).toEqual([
+      'text-gray-950', 'text-xl/7',
+    ])
+  })
+
+  it('recombines equal opposite longhands into axis/corner utilities', async () => {
+    expect(await classesFor('.a { padding-left: 24px; padding-right: 24px; }')).toEqual(['px-6'])
+    expect(await classesFor('.a { border-top-left-radius: 6px; border-top-right-radius: 6px; }')).toEqual([
+      'rounded-t-md',
+    ])
+    // Different values don't merge.
+    expect(await classesFor('.a { padding: 0 24px; }')).toEqual(['px-6', 'py-0'])
+  })
+
   it('maps @supports to a supports variant', async () => {
     const classes = await classesFor('@supports (display: grid) { .a { display: flex; } }')
     expect(classes).toEqual(['supports-[display:grid]:flex'])

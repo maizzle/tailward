@@ -157,13 +157,20 @@ export class CssToTailwind {
     const sel = base || selector
     const classes: string[] = []
     const complementary: string[] = []
+    let fontSizeCls: string | undefined
+    let leadingCls: string | undefined
 
     for (const decl of decls) {
+      const prop = decl.prop.toLowerCase()
       // If the rule sits under an unsupported at-rule, nothing is convertible.
-      const result = media === null
-        ? { classes: [], notes: [] as string[] }
-        : this.convertDeclaration(decl.prop.toLowerCase(), decl.value)
+      const result = media === null ? { classes: [], notes: [] as string[] } : this.convertDeclaration(prop, decl.value)
       if (result.classes.length) {
+        // Remember the font-size / line-height classes so we can fuse them (below).
+        if (prop === 'font-size' && result.classes.length === 1 && result.classes[0].startsWith('text-')) {
+          fontSizeCls = result.classes[0]
+        } else if (prop === 'line-height' && result.classes.length === 1 && result.classes[0].startsWith('leading-')) {
+          leadingCls = result.classes[0]
+        }
         classes.push(...result.classes)
         for (const message of result.notes) {
           warnings.push({ type: 'approximate-color', selector: sel, declaration: stringifyDecl(decl), message })
@@ -181,8 +188,17 @@ export class CssToTailwind {
 
     if (classes.length === 0 && complementary.length === 0) return null
 
+    // Fuse a font-size + line-height pair into `text-xl/7`, then recombine equal
+    // opposite longhands (`pl-6 pr-6` -> `px-6`, corner radii -> `rounded-t`).
+    let out = classes
+    if (fontSizeCls && leadingCls) {
+      out = out.filter((c) => c !== fontSizeCls && c !== leadingCls)
+      out.push(`${fontSizeCls}/${leadingCls.slice('leading-'.length)}`)
+    }
+    out = combineDirectional(out)
+
     const prefix = [...(media ?? []), ...pseudoVariants].map((v) => `${v}:`).join('')
-    const prefixed = prefix ? classes.map((c) => applyVariantPrefix(prefix, c)) : classes
+    const prefixed = prefix ? out.map((c) => applyVariantPrefix(prefix, c)) : out
     const ordered = this.orderClasses(prefixed)
 
     return {
@@ -369,6 +385,46 @@ function stripVariants(className: string): string {
 
 function stringifyDecl(decl: ParsedDecl): string {
   return `${decl.prop}: ${decl.value}${decl.important ? ' !important' : ''}`
+}
+
+// Merge two equal-valued opposite-side utilities into one: `pl-6 pr-6` -> `px-6`,
+// `rounded-tl-sm rounded-tr-sm` -> `rounded-t-sm`, cascading (`px`+`py` -> `p`).
+const COMBINE_RULES: [string, string, string][] = [
+  ['pt', 'pb', 'py'], ['pl', 'pr', 'px'], ['px', 'py', 'p'],
+  ['mt', 'mb', 'my'], ['ml', 'mr', 'mx'], ['mx', 'my', 'm'],
+  ['rounded-tl', 'rounded-tr', 'rounded-t'], ['rounded-bl', 'rounded-br', 'rounded-b'],
+  ['rounded-tl', 'rounded-bl', 'rounded-l'], ['rounded-tr', 'rounded-br', 'rounded-r'],
+  ['rounded-t', 'rounded-b', 'rounded'], ['rounded-l', 'rounded-r', 'rounded'],
+]
+
+/** Splits `pl-6` -> `{ root: 'pl', value: '6' }`; null if it has no value suffix. */
+function splitSideClass(cls: string): { root: string; value: string } | null {
+  const dash = cls.lastIndexOf('-')
+  if (dash <= 0) return null
+  return { root: cls.slice(0, dash), value: cls.slice(dash + 1) }
+}
+
+function combineDirectional(classes: string[]): string[] {
+  const out = [...classes]
+  let merged = true
+  while (merged) {
+    merged = false
+    for (const [a, b, into] of COMBINE_RULES) {
+      // Find a matching (aClass, bClass) sharing the same value.
+      const ai = out.findIndex((c) => splitSideClass(c)?.root === a)
+      if (ai === -1) continue
+      const value = splitSideClass(out[ai])!.value
+      const bi = out.findIndex((c) => { const s = splitSideClass(c); return s?.root === b && s.value === value })
+      if (bi === -1) continue
+      const combined = `${into}-${value}`
+      out.splice(Math.max(ai, bi), 1)
+      out.splice(Math.min(ai, bi), 1)
+      out.push(combined)
+      merged = true
+      break
+    }
+  }
+  return out
 }
 
 function applyVariantPrefix(prefix: string, className: string): string {
