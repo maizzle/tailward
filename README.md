@@ -30,6 +30,7 @@ It runs on the edge (the default and custom-`theme` paths use a pregenerated ind
 - [What it converts](#what-it-converts)
 - [Themes](#themes)
 - [API](#api)
+- [Options](#options)
 - [How it works](#how-it-works)
 - [License](#license)
 
@@ -89,15 +90,28 @@ const { nodes } = await convertCss('.a { display: block }')
 ```ts
 import { convertHtml } from 'tailward' // or 'tailward/html'
 
-const { html, warnings } = await convertHtml(`
-  <style>
-    .btn:hover { color: #fb2c36 }
-    @media (min-width: 48rem) { .btn { display: flex } }
-  </style>
-  <a class="btn" style="margin: 8px; font-weight: 700">Go</a>
-`)
-// <a class="btn hover:text-red-500 md:flex m-2 font-bold">Go</a>
+const { html, warnings } = await convertHtml(input)
 ```
+
+Given this `input`:
+
+```html
+<style>
+  .card { border-radius: 8px; background-color: #fff }
+  .card:hover { color: #fb2c36 }
+  @media (min-width: 48rem) { .card { padding: 24px } }
+</style>
+
+<div class="card" style="padding: 16px">Hello</div>
+```
+
+...you get `html` back like this:
+
+```html
+<div class="card rounded-lg bg-white hover:text-red-500 md:p-6 p-4">Hello</div>
+```
+
+The `style=""` becomes `p-4`, the `.card` rule becomes `rounded-lg bg-white`, `:hover` and `@media` bake into the `hover:` and `md:` variants, and the `<style>` block is dropped once everything in it has converted.
 
 Here's what it does with each part:
 
@@ -259,7 +273,7 @@ toApply(result)    // ".a { @apply flex p-4; }"
 toClassMap(result) // { '.a': 'flex p-4' }
 ```
 
-### Options
+## Options
 
 Every entry point takes the same options object - the `CssToTailwind` constructor, `convertCss`, and `convertHtml` (which adds a [few of its own](#de-inlining-html) on top). They're all optional.
 
