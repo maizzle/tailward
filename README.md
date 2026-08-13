@@ -125,7 +125,7 @@ tailward styles.css --watch         # re-run on change
 
 ## What it handles
 
-- **Full stylesheets** — selectors, `@media` → responsive variants (`md:`), pseudo-classes/elements → variants (`hover:`, `before:`), `@supports` → `supports-[…]:`.
+- **Full stylesheets** — selectors, `@media` → responsive variants (`md:`), pseudo-classes/elements → variants (`hover:`, `before:`), `@supports` → `supports-[…]:`, `@container` → container-query variants (`@sm:`, `@min-[400px]:`).
 - **Colors** — nearest palette match in OKLab (`#fb2c36` → `text-red-500`), falling back to arbitrary values past a threshold.
 - **Spacing** — any Tailwind 0.25-step multiplier (`13px` → `p-3.25`, `0.875rem` → `p-3.5`), plus box-shorthand decomposition (`padding: 0 24px` → `px-6 py-0`).
 - **Named tokens** — `border-radius: 0.5rem` → `rounded-lg`, `font-weight: 700` → `font-bold`, `font-size: 20px` → `text-xl`.

@@ -117,3 +117,33 @@ export function mediaVariant(params: string, ctx: VariantContext): string | null
   if (bare.startsWith('(') && bare.endsWith(')')) return `[@media${bare}]`
   return null
 }
+
+/**
+ * Maps an `@container` params string to a Tailwind container-query variant.
+ *
+ * `(min-width: 24rem)` -> `@sm` (named `--container-*` token) or `@min-[24rem]`
+ * (exact). A named container (`sidebar (min-width: 400px)`) -> `@min-[400px]/sidebar`.
+ * Other unnamed conditions (incl. `max-width`, whose `width < N` differs from the
+ * named `@max-*`) stay faithful as `[@container(…)]`. Returns null if unmappable.
+ */
+export function containerVariant(params: string, named: Map<string, string>, remInPx: number): string | null {
+  const trimmed = params.trim()
+  const paren = trimmed.indexOf('(')
+  if (paren === -1) return null // a bare container name with no query — not a variant
+  const name = paren > 0 ? trimmed.slice(0, paren).trim() : ''
+  const cond = trimmed.slice(paren)
+  const suffix = name ? `/${name}` : ''
+
+  // Named `--container-*` token (unnamed containers only, to keep output verified-valid).
+  if (!name) {
+    const key = canonicalizeMedia(cond, remInPx)
+    if (key && named.has(key)) return `@${named.get(key)}`
+  }
+  // `min-[N]` is exactly `min-width: N` — safe, and the only form a named container takes here.
+  const bare = cond.replace(/\s+/g, '')
+  const min = /^\(min-width:([^)]+)\)$/i.exec(bare)
+  if (min) return `@min-[${min[1]}]${suffix}`
+  // Faithful arbitrary variant for any other unnamed condition (incl. max-width).
+  if (!name && bare.startsWith('(') && bare.endsWith(')')) return `[@container${bare}]`
+  return null
+}

@@ -288,6 +288,35 @@ describe('CssToTailwind', () => {
     })
   })
 
+  describe('container queries', () => {
+    it('maps a min-width container query to a named token variant', async () => {
+      expect(await classesFor('@container (min-width: 24rem) { .a { display: flex; } }')).toEqual(['@sm:flex'])
+      expect(await classesFor('@container (min-width: 28rem) { .a { display: block; } }')).toEqual(['@md:block'])
+    })
+
+    it('falls back to @min-[N] for an off-token min-width', async () => {
+      expect(await classesFor('@container (min-width: 400px) { .a { display: flex; } }')).toEqual(['@min-[400px]:flex'])
+    })
+
+    it('carries a named container through', async () => {
+      expect(await classesFor('@container sidebar (min-width: 400px) { .a { display: flex; } }')).toEqual([
+        '@min-[400px]/sidebar:flex',
+      ])
+    })
+
+    it('keeps a max-width container query faithful (not @max-[N])', async () => {
+      expect(await classesFor('@container (max-width: 400px) { .a { display: flex; } }')).toEqual([
+        '[@container(max-width:400px)]:flex',
+      ])
+    })
+
+    it('keeps a named non-min container query as complementary', async () => {
+      const { nodes } = await c.convert('@container sidebar (max-width: 400px) { .a { display: flex; } }')
+      expect(nodes[0].tailwindClasses).toEqual([])
+      expect(nodes[0].complementary).toContain('display: flex')
+    })
+  })
+
   describe('important option', () => {
     it('drops !important by default', async () => {
       expect(await classesFor('.a { color: #fb2c36 !important; }')).toEqual(['text-red-500'])

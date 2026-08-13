@@ -8,7 +8,7 @@ import { matchSpacing } from './matchers/spacing.ts'
 import { arbitraryUtility, arbitraryProperty } from './matchers/arbitrary.ts'
 import { expandBoxShorthand } from './matchers/shorthand.ts'
 import { decomposeTransform, decomposeFilter, decomposeGradient, type FunctionsContext } from './matchers/functions.ts'
-import { selectorVariants, mediaVariant, type VariantContext } from './variants.ts'
+import { selectorVariants, mediaVariant, containerVariant, canonicalizeMedia, type VariantContext } from './variants.ts'
 import type { ConversionSummary, ConverterOptions, ConvertResult, ConvertedNode, Warning } from './types.ts'
 
 /** A utility class carried through the pipeline with its importance flag. */
@@ -150,6 +150,10 @@ export class CssToTailwind {
         let feat = at.params.replace(/\s+/g, '')
         if (feat.startsWith('(') && feat.endsWith(')')) feat = feat.slice(1, -1)
         variants.push(`supports-[${feat}]`)
+      } else if (at.name === 'container') {
+        const v = containerVariant(at.params, this.containerVariants(), this.options.remInPx)
+        if (!v) return null
+        variants.push(v)
       } else {
         return null
       }
@@ -314,6 +318,20 @@ export class CssToTailwind {
       colorStop: (root, color) => this.colorMatcher!.match(root, color, this.options.colorThreshold)?.className ?? null,
       hasRoot: (root) => index.rootRanks.has(root),
     }
+  }
+
+  private containerVariantsCache?: Map<string, string>
+  /** Canonical container width condition (`(w>=384px)`) -> token name (`sm`), from `--container-*`. */
+  private containerVariants(): Map<string, string> {
+    if (!this.containerVariantsCache) {
+      this.containerVariantsCache = new Map()
+      for (const [key, value] of this.index!.vars) {
+        const m = /^--container-(.+)$/.exec(key)
+        const canonical = m ? canonicalizeMedia(`(min-width: ${value})`, this.options.remInPx) : null
+        if (m && canonical) this.containerVariantsCache.set(canonical, m[1])
+      }
+    }
+    return this.containerVariantsCache
   }
 
   private blurScale?: Map<string, string>

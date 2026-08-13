@@ -119,8 +119,12 @@ reuses `toApply`.
 warnings; converted = totalDecls − unconvertible; arbitrary = emitted classes with
 `[`/`(--`; coverage rounded to 4dp). CLI `--summary` prints `summaryLine(summary)`.
 
-### 8. Container queries
-- `variants.ts`/`convertRule`: handle `@container (min-width: N)` at-rule context → `@min-[Npx]:` / named container variant; extend `atRuleVariants` to accept `container`. Lower priority.
+### 8. Container queries ✅ DONE
+`containerVariant` in `variants.ts` + a `container` branch in `atRuleVariants`.
+`@container (min-width: 24rem)` → `@sm` (named `--container-*` token, built lazily
+from `index.vars`) or `@min-[N]` (exact); named containers → `@min-[N]/name`;
+`max-width`/other unnamed → faithful `[@container(…)]`; named non-min → complementary.
+Mirrors the media-variant approach (max-width's `width < N` ≠ `max-width: N`). 5 tests.
 
 ---
 
