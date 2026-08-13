@@ -13,19 +13,19 @@ import { parseStylesheet, type AtRuleContext, type ParsedDecl } from './css-pars
 import type { ConvertedNode, ConverterOptions, Warning } from './types.ts'
 
 export interface ConvertHtmlOptions extends ConverterOptions {
-  /** Rewrite inline `style=""` attributes into classes. @default true */
-  inline?: boolean
+  /** Convert inline `style=""` attributes into classes. @default true */
+  styleAttributes?: boolean
   /**
    * How to treat `<style>` rules:
    * - `variants` (default): attach converted classes to matching elements (baking
    *   `@media`/`:hover` into `sm:`/`hover:` variants); keep the rest as a residual `<style>`.
-   * - `residual`: leave every `<style>` block untouched (only inline attributes are converted).
+   * - `residual`: leave every `<style>` block untouched (only `style=""` attributes are converted).
    * - `drop`: convert what maps and discard everything else (no residual `<style>`).
    * @default 'variants'
    */
   styleRules?: 'variants' | 'residual' | 'drop'
   /** Keep the original `style=""` attribute alongside the emitted classes. @default false */
-  keepStyleAttr?: boolean
+  keepStyleAttributes?: boolean
 }
 
 export interface ConvertHtmlResult {
@@ -138,7 +138,7 @@ export async function convertHtml(
   html: string,
   options: ConvertHtmlOptions = {},
 ): Promise<ConvertHtmlResult> {
-  const { inline = true, styleRules = 'variants', keepStyleAttr = false, ...converterOptions } = options
+  const { styleAttributes = true, styleRules = 'variants', keepStyleAttributes = false, ...converterOptions } = options
   const converter = new CssToTailwind(converterOptions)
   const warnings: Warning[] = []
   // Parse and serialize without touching entities so text/attributes round-trip
@@ -152,7 +152,7 @@ export async function convertHtml(
     }
   }
 
-  if (inline) {
+  if (styleAttributes) {
     for (const el of selectAll('[style]', doc) as unknown as Element[]) {
       const style = el.attribs.style
       if (!style) continue
@@ -161,7 +161,7 @@ export async function convertHtml(
       const node = nodes[0]
       if (!node) continue
       if (node.tailwindClasses.length) addClasses(el, node.tailwindClasses)
-      if (keepStyleAttr) continue
+      if (keepStyleAttributes) continue
       if (node.complementary) el.attribs.style = node.complementary
       else delete el.attribs.style
     }

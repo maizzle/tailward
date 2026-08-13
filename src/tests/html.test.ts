@@ -19,13 +19,13 @@ describe('convertHtml — inline style attributes', () => {
     expect(html).toBe('<div style="animation-timeline: view()" class="flex">x</div>')
   })
 
-  it('keeps the original style attribute when keepStyleAttr is set', async () => {
-    const { html } = await convertHtml('<div style="display:flex">x</div>', { keepStyleAttr: true })
+  it('keeps the original style attribute when keepStyleAttributes is set', async () => {
+    const { html } = await convertHtml('<div style="display:flex">x</div>', { keepStyleAttributes: true })
     expect(html).toBe('<div style="display:flex" class="flex">x</div>')
   })
 
-  it('leaves inline styles untouched when inline is false', async () => {
-    const { html } = await convertHtml('<div style="display:flex">x</div>', { inline: false })
+  it('leaves style attributes untouched when styleAttributes is false', async () => {
+    const { html } = await convertHtml('<div style="display:flex">x</div>', { styleAttributes: false })
     expect(html).toBe('<div style="display:flex">x</div>')
   })
 })
