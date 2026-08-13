@@ -1,4 +1,6 @@
 export { CssToTailwind } from './converter.ts'
+export { convertHtml } from './html.ts'
+export type { ConvertHtmlOptions, ConvertHtmlResult } from './html.ts'
 export type { ConverterOptions, ConvertResult, ConvertedNode } from './types.ts'
 
 import { CssToTailwind } from './converter.ts'

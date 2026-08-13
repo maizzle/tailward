@@ -19,7 +19,21 @@ vitest, oxlint (no config). Keep coverage ≥97% stmts / 100% funcs.
 
 ## Phase 1 — make it usable (highest value)
 
-### 1. `convertHtml(html, options)` — the de-inline API
+### 1. `convertHtml(html, options)` — the de-inline API ✅ DONE
+Shipped in `src/html.ts`; exported from `index.ts` and as subpath `tailward/html`.
+Deps added: `htmlparser2`, `css-select`, `dom-serializer`, `domutils`, `domhandler`
+(all pure-JS/edge-safe). Standalone `convertHtml(html, opts)` (not a class method) —
+reuses one `CssToTailwind` internally; `opts` extends `ConverterOptions` plus
+`inline` (default true), `styleRules: 'variants'|'residual'|'drop'` (default
+`'variants'`), `keepStyleAttr` (default false). `<style>` rules convert via
+`convert()` (variants baked) and attach to elements matched by `css-select`;
+`@keyframes`/`@font-face`/`@import` and unmatched/partial rules fall to a residual
+`<style>`. Parse+serialize with entities off for byte-faithful round-trip. 20 tests.
+Note: the `styleRules` enum replaced the originally-sketched `styleBlocks`/`dropStyleTag`
+booleans, and the default is `'variants'` (convert-to-variant-classes) per user request.
+
+_Original plan below (kept for reference):_
+
 New `src/html.ts`, exported from `index.ts` AND as subpath `tailward/html` (keep core lean).
 - Add deps: `htmlparser2`, `domutils`, `dom-serializer` (all pure-JS, edge-safe).
 - Flow: `parseDocument(html)` → build `authoredMap` from `<style>` rules (convert each rule; `.sel` → classes) → walk elements; for each with `style`: convert → classes, map authored `class` tokens through `authoredMap`, merge (dedup + `orderClasses`), set `class`, delete `style`. Optionally drop converted `<style>` rules; keep unconvertible ones in a residual `<style>`.
