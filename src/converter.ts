@@ -291,12 +291,26 @@ export class CssToTailwind {
     return single ? { classes: [single.cls], notes: single.note ? [single.note] : [] } : { classes: [], notes: [] }
   }
 
-  /** Handles `transform`/`filter`/gradient `background(-image)`, or null for other props. */
+  /**
+   * Owns properties whose reverse-index root would produce an invalid or wrong
+   * utility: `transform`/`filter`/gradients decompose per-function, and the
+   * overloaded `background-*`/`box-shadow` props map to their correct arbitrary
+   * root (the index otherwise picks `bg-conic`/`inset-ring`/`bg-auto`). Returns
+   * null for props it doesn't own.
+   */
   private decomposeFunctional(prop: string, value: string): DeclResult | null {
     const isGradient = (prop === 'background-image' || prop === 'background') && /gradient\(/i.test(value)
-    if (prop !== 'transform' && prop !== 'filter' && !isGradient) return null
+    const owned =
+      prop === 'transform' ||
+      prop === 'filter' ||
+      prop === 'background-image' ||
+      prop === 'background-size' ||
+      prop === 'background-position' ||
+      prop === 'box-shadow' ||
+      isGradient
+    if (!owned) return null
 
-    // Prefer an exact named utility (`transform-none`, `filter-none`).
+    // Prefer an exact named utility (`transform-none`, `bg-none`, `bg-cover`, `shadow-lg`).
     const exact = this.index!.decls.get(declKey(prop, value, this.options.remInPx))
     if (exact) return { classes: [exact], notes: [] }
 
@@ -306,11 +320,36 @@ export class CssToTailwind {
         ? decomposeTransform(value, ctx)
         : prop === 'filter'
           ? decomposeFilter(value, ctx)
-          : decomposeGradient(value, ctx)
+          : isGradient
+            ? decomposeGradient(value, ctx)
+            : this.arbitraryBackground(prop, value)
     if (classes) return { classes, notes: [] }
 
     const arb = this.arbitraryFor(prop, value)
     return arb ? { classes: [arb], notes: [] } : { classes: [], notes: [] }
+  }
+
+  /**
+   * The correct arbitrary utility for the overloaded `background-*`/`box-shadow`
+   * properties (`background-image: url(…)` -> `bg-[url(…)]`, `background-size:
+   * 5px 4px` -> `bg-[length:5px_4px]`, `background-position: top center` ->
+   * `bg-position-[top_center]`, `box-shadow: …` -> `shadow-[…]`). Correct by
+   * construction, so trusted like the other decomposers.
+   */
+  private arbitraryBackground(prop: string, value: string): string[] | null {
+    if (!this.options.arbitrary) return null
+    switch (prop) {
+      case 'background-image':
+        return [arbitraryUtility('bg', value)]
+      case 'background-size':
+        return [arbitraryUtility('bg', `length:${value}`)]
+      case 'background-position':
+        return [arbitraryUtility('bg-position', value)]
+      case 'box-shadow':
+        return [arbitraryUtility('shadow', value)]
+      default:
+        return null
+    }
   }
 
   private functionsContext(): FunctionsContext {

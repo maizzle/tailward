@@ -262,7 +262,14 @@ export function buildReverseIndex(ds: DesignSystem, remInPx: number): ReverseInd
     if (!raw || raw.length === 0) continue
 
     const resolved = raw.map((d) => ({ prop: d.prop, value: concretize(d.value, vars) }))
+    const parsed = ds.parseCandidate(name)[0]
     const root = utilityRoot(ds, name)
+    // Only functional utilities (`bg`, `p`, `bg-conic`) accept an arbitrary value,
+    // so only they can back a `root-[value]` fallback. Static utilities (`bg-auto`,
+    // `content-none`, `block`) are keyword-only; recording their root would make the
+    // engine-free path emit invalid classes like `bg-auto-[…]`. Their keyword values
+    // are still reachable through the exact `decls` index below.
+    const functional = parsed?.kind === 'functional'
 
     if (root && !root.startsWith('-')) {
       if (resolved.length === 1) {
@@ -271,11 +278,11 @@ export function buildReverseIndex(ds: DesignSystem, remInPx: number): ReverseInd
         const { prop, value } = resolved[0]
         if (isColorValue(value)) {
           if (!colorRoots.has(prop)) colorRoots.set(prop, root)
-        } else if (rootSource.get(prop) !== 'single') {
+        } else if (functional && rootSource.get(prop) !== 'single') {
           propToRoot.set(prop, root)
           rootSource.set(prop, 'single')
         }
-      } else {
+      } else if (functional) {
         // Multi-declaration utilities (e.g. `text-xl` sets font-size + line-height)
         // fill in roots for otherwise-unclaimed properties like `font-size` -> `text`.
         // A wrong guess just fails verification at convert time and falls back.
@@ -299,7 +306,6 @@ export function buildReverseIndex(ds: DesignSystem, remInPx: number): ReverseInd
         if (root && prop.includes('radius')) radiusRoots.add(root)
         // A root is spacing-based if its numeric token equals value / --spacing.
         if (root && !root.startsWith('-')) {
-          const parsed = ds.parseCandidate(name)[0]
           const token = parsed?.value?.kind === 'named' ? parsed.value.value : null
           const rem = normalizeLength(value, remInPx)
           if (token && /^\d+$/.test(token) && rem !== null) {
