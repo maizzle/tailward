@@ -25,8 +25,10 @@ export function createColorMatcher(palette: Map<string, string>): ColorMatcher {
       if (v === 'transparent') return { className: `${root}-transparent`, distance: 0 }
       if (v === 'currentcolor') return { className: `${root}-current`, distance: 0 }
 
-      // Alpha channels don't round-trip cleanly to a bare token; defer to arbitrary.
-      if (alphaOfColor(v) !== 1) return null
+      const alpha = alphaOfColor(v)
+      if (alpha === 0) return { className: `${root}-transparent`, distance: 0 } // fully transparent
+      // Partial alpha doesn't round-trip cleanly to a bare token; defer to arbitrary.
+      if (alpha !== 1) return null
 
       const target = toOklab(v)
       if (!target) return null

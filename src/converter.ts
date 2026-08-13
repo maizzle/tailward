@@ -397,11 +397,11 @@ const COMBINE_RULES: [string, string, string][] = [
   ['rounded-t', 'rounded-b', 'rounded'], ['rounded-l', 'rounded-r', 'rounded'],
 ]
 
-/** Splits `pl-6` -> `{ root: 'pl', value: '6' }`; null if it has no value suffix. */
-function splitSideClass(cls: string): { root: string; value: string } | null {
-  const dash = cls.lastIndexOf('-')
-  if (dash <= 0) return null
-  return { root: cls.slice(0, dash), value: cls.slice(dash + 1) }
+/** The value a class carries for a given root: `pl-6`/`pl` -> `'6'`/`''`; null if not that root. */
+function valueForRoot(cls: string, root: string): string | null {
+  if (cls === root) return '' // bare default (e.g. `rounded-tl`)
+  if (cls.startsWith(root + '-')) return cls.slice(root.length + 1)
+  return null
 }
 
 function combineDirectional(classes: string[]): string[] {
@@ -410,13 +410,12 @@ function combineDirectional(classes: string[]): string[] {
   while (merged) {
     merged = false
     for (const [a, b, into] of COMBINE_RULES) {
-      // Find a matching (aClass, bClass) sharing the same value.
-      const ai = out.findIndex((c) => splitSideClass(c)?.root === a)
+      const ai = out.findIndex((c) => valueForRoot(c, a) !== null)
       if (ai === -1) continue
-      const value = splitSideClass(out[ai])!.value
-      const bi = out.findIndex((c) => { const s = splitSideClass(c); return s?.root === b && s.value === value })
+      const value = valueForRoot(out[ai], a)!
+      const bi = out.findIndex((c) => valueForRoot(c, b) === value)
       if (bi === -1) continue
-      const combined = `${into}-${value}`
+      const combined = value === '' ? into : `${into}-${value}`
       out.splice(Math.max(ai, bi), 1)
       out.splice(Math.min(ai, bi), 1)
       out.push(combined)

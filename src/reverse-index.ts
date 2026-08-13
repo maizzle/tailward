@@ -199,6 +199,7 @@ export function buildReverseIndex(ds: DesignSystem, remInPx: number): ReverseInd
   const propToRoot = new Map<string, string>()
   const colorRoots = new Map<string, string>()
   const spacingRoots = new Set<string>()
+  const radiusRoots = new Set<string>()
   // Tracks whether a property's root came from a single- or multi-declaration
   // utility, so single-declaration utilities always win (in first-seen order).
   const rootSource = new Map<string, 'single' | 'multi'>()
@@ -276,6 +277,7 @@ export function buildReverseIndex(ds: DesignSystem, remInPx: number): ReverseInd
         const key = declKey(prop, value, remInPx)
         const existing = decls.get(key)
         if (!existing || name.length < existing.length) decls.set(key, name)
+        if (root && prop.includes('radius')) radiusRoots.add(root)
         // A root is spacing-based if its numeric token equals value / --spacing.
         if (root && !root.startsWith('-')) {
           const parsed = ds.parseCandidate(name)[0]
@@ -290,6 +292,30 @@ export function buildReverseIndex(ds: DesignSystem, remInPx: number): ReverseInd
       }
     }
   }
+
+  // `getClassList` omits the bare-default radius utilities (`rounded`, `rounded-t`,
+  // `rounded-tl` = `border-radius: var(--radius)`), so a value equal to the default
+  // radius would otherwise only match the longer `-sm` token. Index the bare forms;
+  // the shortest-name tie-break then prefers `rounded` over `rounded-sm`.
+  const bareRoots = [...radiusRoots]
+  const bareCss = ds.candidatesToCss(bareRoots)
+  bareRoots.forEach((name, i) => {
+    const css = bareCss[i]
+    if (!css) return
+    let raw: Decl[] | null
+    try {
+      raw = realDecls(css)
+    } catch {
+      return
+    }
+    if (!raw || raw.length !== 1) return
+    const prop = raw[0].prop
+    const value = concretize(raw[0].value, vars)
+    if (isColorValue(value)) return
+    const key = declKey(prop, value, remInPx)
+    const existing = decls.get(key)
+    if (!existing || name.length < existing.length) decls.set(key, name)
+  })
 
   const numericRoots = computeNumericRoots(ds, names)
   const rootRanks = computeRootRanks(ds, names)

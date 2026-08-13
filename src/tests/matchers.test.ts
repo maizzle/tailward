@@ -23,6 +23,9 @@ describe('color matcher', () => {
   it('defers translucent colors to arbitrary', () => {
     expect(m.match('bg', 'rgba(255,0,0,0.5)', 0.02)).toBeNull()
   })
+  it('maps a zero-alpha color to transparent', () => {
+    expect(m.match('bg', 'rgba(0,0,0,0)', 0.02)).toEqual({ className: 'bg-transparent', distance: 0 })
+  })
   it('matches an exact palette color with ~zero distance', () => {
     const r = m.match('text', 'oklch(63.7% 0.237 25.331)', 0.02)
     expect(r?.className).toBe('text-red-500')

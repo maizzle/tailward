@@ -151,6 +151,11 @@ describe('CssToTailwind', () => {
     expect(await classesFor('.a { font-size: 14px; line-height: 20px; }')).toEqual(['text-sm/5'])
   })
 
+  it('maps a zero-alpha color and the default radius to bare tokens', async () => {
+    expect(await classesFor('.a { background-color: rgba(0,0,0,0); }')).toEqual(['bg-transparent'])
+    expect(await classesFor('.a { border-radius: 0.25rem; }')).toEqual(['rounded'])
+  })
+
   it('does not fuse a text color with a line-height', async () => {
     expect(await classesFor('.a { color: #030712; font-size: 20px; line-height: 28px; }')).toEqual([
       'text-gray-950', 'text-xl/7',
@@ -161,6 +166,10 @@ describe('CssToTailwind', () => {
     expect(await classesFor('.a { padding-left: 24px; padding-right: 24px; }')).toEqual(['px-6'])
     expect(await classesFor('.a { border-top-left-radius: 6px; border-top-right-radius: 6px; }')).toEqual([
       'rounded-t-md',
+    ])
+    // Bare default-radius corners combine too.
+    expect(await classesFor('.a { border-top-left-radius: 0.25rem; border-top-right-radius: 0.25rem; }')).toEqual([
+      'rounded-t',
     ])
     // Different values don't merge.
     expect(await classesFor('.a { padding: 0 24px; }')).toEqual(['px-6', 'py-0'])
