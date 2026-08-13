@@ -7,6 +7,7 @@ import { createColorMatcher, type ColorMatcher } from './matchers/color.ts'
 import { matchSpacing } from './matchers/spacing.ts'
 import { arbitraryUtility, arbitraryProperty } from './matchers/arbitrary.ts'
 import { expandBoxShorthand } from './matchers/shorthand.ts'
+import { decomposeTransform, decomposeFilter, decomposeGradient, type FunctionsContext } from './matchers/functions.ts'
 import { selectorVariants, mediaVariant, type VariantContext } from './variants.ts'
 import type { ConverterOptions, ConvertResult, ConvertedNode, Warning } from './types.ts'
 
@@ -269,8 +270,63 @@ export class CssToTailwind {
       }
       if (ok) return { classes, notes }
     }
+
+    // Composite transform/filter/gradient declarations decompose into per-function
+    // utilities. The reverse index would map these props to a wrong root, so own
+    // them fully here (falling back to a faithful arbitrary property, never a guess).
+    const decomposed = this.decomposeFunctional(prop, trimmed)
+    if (decomposed) return decomposed
+
     const single = this.convertSingle(prop, trimmed)
     return single ? { classes: [single.cls], notes: single.note ? [single.note] : [] } : { classes: [], notes: [] }
+  }
+
+  /** Handles `transform`/`filter`/gradient `background(-image)`, or null for other props. */
+  private decomposeFunctional(prop: string, value: string): DeclResult | null {
+    const isGradient = (prop === 'background-image' || prop === 'background') && /gradient\(/i.test(value)
+    if (prop !== 'transform' && prop !== 'filter' && !isGradient) return null
+
+    // Prefer an exact named utility (`transform-none`, `filter-none`).
+    const exact = this.index!.decls.get(declKey(prop, value, this.options.remInPx))
+    if (exact) return { classes: [exact], notes: [] }
+
+    const ctx = this.functionsContext()
+    const classes =
+      prop === 'transform'
+        ? decomposeTransform(value, ctx)
+        : prop === 'filter'
+          ? decomposeFilter(value, ctx)
+          : decomposeGradient(value, ctx)
+    if (classes) return { classes, notes: [] }
+
+    const arb = this.arbitraryFor(prop, value)
+    return arb ? { classes: [arb], notes: [] } : { classes: [], notes: [] }
+  }
+
+  private functionsContext(): FunctionsContext {
+    const index = this.index!
+    return {
+      spacing: (root, length) =>
+        matchSpacing(root, length, index.spacingBaseRem, this.options.remInPx, this.options.maxSpacingSteps),
+      blurToken: (length) => this.blurToken(length),
+      colorStop: (root, color) => this.colorMatcher!.match(root, color, this.options.colorThreshold)?.className ?? null,
+      hasRoot: (root) => index.rootRanks.has(root),
+    }
+  }
+
+  private blurScale?: Map<string, string>
+  /** Maps a blur length to its theme token (`4px` -> `xs`), built once from `--blur-*`. */
+  private blurToken(length: string): string | null {
+    if (!this.blurScale) {
+      this.blurScale = new Map()
+      for (const [key, value] of this.index!.vars) {
+        const m = /^--blur-(.+)$/.exec(key)
+        const px = m ? lengthToPx(value, this.options.remInPx) : null
+        if (m && px !== null) this.blurScale.set(px, m[1])
+      }
+    }
+    const px = lengthToPx(length, this.options.remInPx)
+    return px !== null ? (this.blurScale.get(px) ?? null) : null
   }
 
   private convertSingle(prop: string, trimmed: string): SingleResult | null {
@@ -413,6 +469,14 @@ function stripVariants(className: string): string {
 
 function stringifyDecl(decl: ParsedDecl): string {
   return `${decl.prop}: ${decl.value}${decl.important ? ' !important' : ''}`
+}
+
+/** Normalizes a length token to a canonical pixel string (`0.25rem` -> `4px`), or null. */
+function lengthToPx(value: string, remInPx: number): string | null {
+  const m = /^(-?\d*\.?\d+)(px|rem|em)?$/.exec(value.trim())
+  if (!m) return null
+  const n = parseFloat(m[1]) * ((m[2] ?? 'px') === 'px' ? 1 : remInPx)
+  return `${n}px`
 }
 
 // Merge two equal-valued opposite-side utilities into one: `pl-6 pr-6` -> `px-6`,

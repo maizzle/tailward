@@ -236,6 +236,58 @@ describe('CssToTailwind', () => {
     expect(nodes[0].complementary).toContain('!important')
   })
 
+  describe('transform / filter / gradient decomposition', () => {
+    it('decomposes transform functions into per-axis utilities', async () => {
+      expect(await classesFor('.a { transform: translateX(10px); }')).toEqual(['translate-x-2.5'])
+      expect(await classesFor('.a { transform: translate(10px, 20px); }')).toEqual(['translate-x-2.5', 'translate-y-5'])
+      expect(await classesFor('.a { transform: scale(1.5); }')).toEqual(['scale-150'])
+      expect(await classesFor('.a { transform: rotate(-45deg); }')).toEqual(['-rotate-45'])
+      expect(await classesFor('.a { transform: translateX(10px) rotate(45deg); }')).toEqual(['translate-x-2.5', 'rotate-45'])
+    })
+
+    it('keeps an unmappable transform as a faithful arbitrary property', async () => {
+      expect(await classesFor('.a { transform: translateX(13.7px); }')).toEqual(['[transform:translateX(13.7px)]'])
+    })
+
+    it('maps the named transform-none utility', async () => {
+      expect(await classesFor('.a { transform: none; }')).toEqual(['transform-none'])
+    })
+
+    it('decomposes filter functions, including rem-based blur', async () => {
+      expect(await classesFor('.a { filter: blur(4px); }')).toEqual(['blur-xs'])
+      expect(await classesFor('.a { filter: blur(0.25rem); }')).toEqual(['blur-xs'])
+      expect(await classesFor('.a { filter: brightness(1.5); }')).toEqual(['brightness-150'])
+      expect(await classesFor('.a { filter: grayscale(100%); }')).toEqual(['grayscale'])
+      expect(await classesFor('.a { filter: blur(4px) brightness(1.5); }')).toEqual(['blur-xs', 'brightness-150'])
+    })
+
+    it('keeps an off-scale filter as a faithful arbitrary property', async () => {
+      expect(await classesFor('.a { filter: blur(3px); }')).toEqual(['[filter:blur(3px)]'])
+    })
+
+    it('decomposes linear gradients into bg-linear + color stops', async () => {
+      expect(await classesFor('.a { background-image: linear-gradient(to right, #fb2c36, #155dfc); }')).toEqual([
+        'bg-linear-to-r', 'from-red-500', 'to-blue-600',
+      ])
+      expect(await classesFor('.a { background: linear-gradient(#000, #fff); }')).toEqual([
+        'bg-linear-to-b', 'from-black', 'to-white',
+      ])
+    })
+
+    it('keeps a non-linear gradient as a faithful arbitrary property', async () => {
+      expect(await classesFor('.a { background-image: radial-gradient(#000, #fff); }')).toEqual([
+        '[background-image:radial-gradient(#000,_#fff)]',
+      ])
+    })
+
+    it('leaves a gradient as complementary when arbitrary is disabled', async () => {
+      const c2 = new CssToTailwind({ arbitrary: false })
+      const { nodes } = await c2.convert('.a { background-image: radial-gradient(#000, #fff); }')
+      expect(nodes[0].tailwindClasses).toEqual([])
+      expect(nodes[0].complementary).toContain('radial-gradient')
+    })
+  })
+
   describe('important option', () => {
     it('drops !important by default', async () => {
       expect(await classesFor('.a { color: #fb2c36 !important; }')).toEqual(['text-red-500'])

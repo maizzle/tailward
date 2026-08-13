@@ -129,6 +129,7 @@ tailward styles.css --watch         # re-run on change
 - **Colors** — nearest palette match in OKLab (`#fb2c36` → `text-red-500`), falling back to arbitrary values past a threshold.
 - **Spacing** — any Tailwind 0.25-step multiplier (`13px` → `p-3.25`, `0.875rem` → `p-3.5`), plus box-shorthand decomposition (`padding: 0 24px` → `px-6 py-0`).
 - **Named tokens** — `border-radius: 0.5rem` → `rounded-lg`, `font-weight: 700` → `font-bold`, `font-size: 20px` → `text-xl`.
+- **Composite properties** — `transform`, `filter`, and linear gradients decompose into per-function utilities: `transform: translateX(10px) rotate(45deg)` → `translate-x-2.5 rotate-45`, `filter: blur(4px)` → `blur-xs`, `linear-gradient(to right, #fb2c36, #155dfc)` → `bg-linear-to-r from-red-500 to-blue-600`.
 - **Anything else** — emitted as an arbitrary value (`p-[13.7px]`, `bg-[#123456]`) or arbitrary property (`[mask-type:luminance]`); set `arbitrary: false` to keep unmatched declarations as raw CSS instead.
 
 Every produced class is verified to reproduce exactly the input declaration —

@@ -80,8 +80,21 @@ _Original plan:_ Option `important?: boolean` (default `false`). `css-parser` al
 
 ## Phase 2 — correctness: composite-property decomposition
 
-### 4. transform / filter / gradient
-New `src/matchers/functions.ts`. Declaration-level converters returning `string[]`; wire into `convertSingle` BEFORE the arbitrary fallback.
+### 4. transform / filter / gradient ✅ DONE
+Shipped `src/matchers/functions.ts` (pure `parseFunctionList`/`amountToPercent`/
+`degrees`/`gradientDirection` + `decomposeTransform`/`decomposeFilter`/
+`decomposeGradient` driven by a `FunctionsContext`). Wired via
+`convertDeclarationUncached` → `decomposeFunctional`, which fully owns
+`transform`/`filter`/gradient `background(-image)` (exact-named → decompose →
+faithful arbitrary property), fixing the prior mis-rooted garbage
+(`rotate-x-[translateX(10px)]`). Blur scale read live from `--blur-*` (no regen).
+These are trusted deterministic matchers (v4 uses separate `translate`/`scale`/
+`rotate` props + gradient vars, so not engine-verifiable) gated on token/root
+existence; off-scale or keyword-color stops fall to faithful arbitrary. Named CSS
+color keywords in stops aren't matched (hand-rolled color parser limit) → arbitrary.
+45 tests (functions unit + converter integration).
+
+_Original plan:_ New `src/matchers/functions.ts`. Declaration-level converters returning `string[]`; wire into `convertSingle` BEFORE the arbitrary fallback.
 - **transform**: parse value into functions (via `postcss-value-parser`). Map: `translateX(v)`→`translate-x-<spacing>` (reuse `matchSpacing`), `translateY`→`translate-y-*`, `translate(x,y)`→both, `scale(n)`→`scale-<n*100>`, `scaleX/Y`, `rotate(45deg)`→`rotate-45`, `skewX/Y(deg)`→`skew-x/y-*`. Unknown fn → arbitrary `[transform:…]`.
 - **filter**: `blur(4px)`→`blur-<token>` (scale from `--blur-*`), `brightness(1.5)`→`brightness-150`, `contrast`, `grayscale`, `saturate`, `drop-shadow`, etc. Numeric → ×100 where relevant.
 - **background / background-image**: `linear-gradient(to right, A, B)` → `bg-linear-to-r from-<A> to-<B>` (v4 `bg-linear-*`); parse direction (`to right`→`-r`, `to bottom`→`-b`, angles → arbitrary) + 2–3 color stops (from/via/to, colors via color matcher). Complex multi-stop → arbitrary.
