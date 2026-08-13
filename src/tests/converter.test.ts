@@ -303,6 +303,14 @@ describe('CssToTailwind', () => {
       expect(await classesFor(".a { cursor: url('c.png'), auto; }")).toEqual(["[cursor:url('c.png'),_auto]"])
       expect(await classesFor('.a { content: "x"; }')).toEqual(['[content:"x"]'])
     })
+
+    it('treats px-scale properties as arbitrary, not 0.25rem spacing', async () => {
+      // Regression: a `<root>-0` utility used to mislabel these as spacing roots,
+      // yielding invalid fractional steps like `decoration-0.75` for `3px`.
+      expect(await classesFor('.a { text-decoration-thickness: 3px; }')).toEqual(['decoration-[3px]'])
+      expect(await classesFor('.a { outline-offset: 3px; }')).toEqual(['outline-offset-[3px]'])
+      expect(await classesFor('.a { stroke-width: 3px; }')).toEqual(['stroke-[3px]'])
+    })
   })
 
   describe('container queries', () => {

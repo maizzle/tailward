@@ -305,11 +305,16 @@ export function buildReverseIndex(ds: DesignSystem, remInPx: number): ReverseInd
         if (!existing || name.length < existing.length) decls.set(key, name)
         if (root && prop.includes('radius')) radiusRoots.add(root)
         // A root is spacing-based if its numeric token equals value / --spacing.
+        // The zero utility (`decoration-0`, `stroke-0`) matches any scale trivially
+        // (`0 === 0 * step`), so skip it - otherwise px-scale roots get misread as
+        // spacing and emit invalid fractional steps (`text-decoration-thickness: 3px`
+        // -> `decoration-0.75`).
         if (root && !root.startsWith('-')) {
           const token = parsed?.value?.kind === 'named' ? parsed.value.value : null
           const rem = normalizeLength(value, remInPx)
-          if (token && /^\d+$/.test(token) && rem !== null) {
-            if (Math.abs(parseFloat(rem) - Number(token) * spacingBaseRem) < 1e-9) {
+          const remN = rem !== null ? parseFloat(rem) : null
+          if (token && /^\d+$/.test(token) && remN !== null && remN !== 0) {
+            if (Math.abs(remN - Number(token) * spacingBaseRem) < 1e-9) {
               spacingRoots.add(root)
             }
           }
