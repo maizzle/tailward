@@ -203,6 +203,12 @@ describe('CssToTailwind', () => {
     expect(nodes[0].complementary).toContain('display: flex')
   })
 
+  it('keeps rules under an unmappable media feature as complementary', async () => {
+    const { nodes } = await c.convert('@media tv { .a { display: flex; } }')
+    expect(nodes[0].tailwindClasses).toEqual([])
+    expect(nodes[0].complementary).toContain('display: flex')
+  })
+
   it('ignores comments inside a rule', async () => {
     expect(await classesFor('.a { /* note */ display: block; }')).toEqual(['block'])
   })

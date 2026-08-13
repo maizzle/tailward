@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveVars, evalCalc, normalizeLength, normalizeValue } from '../normalize.ts'
+import { resolveVars, evalCalc, normalizeLength, normalizeValue, absoluteLineHeight } from '../normalize.ts'
 
 describe('resolveVars', () => {
   const vars = new Map([
@@ -53,6 +53,35 @@ describe('evalCalc', () => {
   })
   it('passes through values with no calc', () => {
     expect(evalCalc('12px')).toBe('12px')
+  })
+  it('leaves an unbalanced calc untouched', () => {
+    expect(evalCalc('calc(1px + 2px')).toBe('calc(1px + 2px')
+  })
+  it('leaves nested-but-unevaluable calc untouched', () => {
+    expect(evalCalc('calc(calc(100% - 1px) * 2)')).toBe('calc(calc(100% - 1px) * 2)')
+  })
+  it('leaves division by a unit untouched', () => {
+    expect(evalCalc('calc(2rem / 3px)')).toBe('calc(2rem / 3px)')
+  })
+  it('leaves an unknown operator untouched', () => {
+    expect(evalCalc('calc(1rem % 2)')).toBe('calc(1rem % 2)')
+  })
+})
+
+describe('absoluteLineHeight', () => {
+  it('normalizes a length to rem', () => {
+    expect(absoluteLineHeight('20px', undefined, 16)).toBe('1.25rem')
+    expect(absoluteLineHeight('1.25rem', undefined, 16)).toBe('1.25rem')
+  })
+  it('resolves a unitless ratio against the font-size', () => {
+    expect(absoluteLineHeight('1.5', '16px', 16)).toBe('1.5rem') // 1.5 * 16px = 24px
+    expect(absoluteLineHeight('2', '0.875rem', 16)).toBe('1.75rem') // 2 * 14px = 28px
+  })
+  it('returns null for a ratio with no font-size', () => {
+    expect(absoluteLineHeight('1.5', undefined, 16)).toBeNull()
+  })
+  it('returns null for a keyword', () => {
+    expect(absoluteLineHeight('normal', '16px', 16)).toBeNull()
   })
 })
 

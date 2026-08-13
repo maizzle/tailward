@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { selectorVariants, mediaVariant, type VariantContext } from '../variants.ts'
+import { selectorVariants, mediaVariant, canonicalizeMedia, type VariantContext } from '../variants.ts'
 
 // Mixed min-width breakpoints (stock-style) and max-width variants (email-style).
 const ctx: VariantContext = {
@@ -56,5 +56,29 @@ describe('mediaVariant', () => {
   })
   it('ignores a screen prefix', () => {
     expect(mediaVariant('screen and (max-width: 430px)', ctx)).toBe('xs')
+  })
+  it('returns null for an unsupported bare feature', () => {
+    expect(mediaVariant('tv', ctx)).toBeNull()
+  })
+})
+
+describe('canonicalizeMedia', () => {
+  it('equates rem/px and min-width/width>= forms', () => {
+    expect(canonicalizeMedia('(min-width: 40rem)', 16)).toBe('(w>=640px)')
+    expect(canonicalizeMedia('(min-width: 640px)', 16)).toBe('(w>=640px)')
+    expect(canonicalizeMedia('(width >= 40rem)', 16)).toBe('(w>=640px)')
+  })
+  it('normalizes every width comparison operator', () => {
+    expect(canonicalizeMedia('(max-width: 600px)', 16)).toBe('(w<=600px)')
+    expect(canonicalizeMedia('(width <= 600px)', 16)).toBe('(w<=600px)')
+    expect(canonicalizeMedia('(width < 600px)', 16)).toBe('(w<600px)')
+    expect(canonicalizeMedia('(width > 600px)', 16)).toBe('(w>600px)')
+  })
+  it('passes through a bare feature and non-numeric width', () => {
+    expect(canonicalizeMedia('print', 16)).toBe('print')
+    expect(canonicalizeMedia('(min-width: auto)', 16)).toBe('(w>=auto)')
+  })
+  it('returns null for empty input', () => {
+    expect(canonicalizeMedia('  ', 16)).toBeNull()
   })
 })

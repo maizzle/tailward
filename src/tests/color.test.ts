@@ -42,6 +42,18 @@ describe('toOklab', () => {
     expect(toOklab('rgb(1 2)')).toBeNull()
     expect(toOklab('notacolor')).toBeNull()
   })
+  it('maps transparent to a zero OKLab', () => {
+    expect(toOklab('transparent')).toEqual({ L: 0, a: 0, b: 0 })
+  })
+  it('rejects a hex of invalid length', () => {
+    expect(toOklab('#12')).toBeNull()
+    expect(toOklab('#1234567')).toBeNull()
+  })
+  it('rejects color functions with too few components', () => {
+    expect(toOklab('hsl(0 100%)')).toBeNull()
+    expect(toOklab('oklch(50%)')).toBeNull()
+    expect(toOklab('oklab(0.5)')).toBeNull()
+  })
 })
 
 describe('alphaOfColor', () => {

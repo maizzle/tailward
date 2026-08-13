@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { createColorMatcher } from '../matchers/color.ts'
 import { arbitraryUtility, arbitraryProperty } from '../matchers/arbitrary.ts'
 import { matchSpacing } from '../matchers/spacing.ts'
+import { expandBoxShorthand } from '../matchers/shorthand.ts'
 
 describe('color matcher', () => {
   const palette = new Map([
@@ -76,5 +77,19 @@ describe('spacing matcher', () => {
   })
   it('returns null for non-length values', () => {
     expect(matchSpacing('p', 'auto', 0.25, 16)).toBeNull()
+  })
+})
+
+describe('box shorthand', () => {
+  it('does not split whitespace inside parens', () => {
+    const parts = expandBoxShorthand('padding', '0 calc(2px + 3px)')
+    expect(parts).toEqual([
+      { prop: 'padding-block', value: '0' },
+      { prop: 'padding-inline', value: 'calc(2px + 3px)' },
+    ])
+  })
+  it('returns null for a single value or non-box property', () => {
+    expect(expandBoxShorthand('padding', '4px')).toBeNull()
+    expect(expandBoxShorthand('gap', '4px 8px')).toBeNull()
   })
 })
