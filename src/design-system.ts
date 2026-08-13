@@ -35,8 +35,17 @@ function resolveStylesheet(id: string, base: string): string {
   if (id.startsWith('.') || isAbsolute(id)) {
     return resolve(base, id)
   }
-  const target = id.endsWith('.css') ? id : `${id}/index.css`
-  return require.resolve(target, { paths: [base] })
+  if (id.endsWith('.css')) return require.resolve(id, { paths: [base] })
+  // Bare package: prefer its own CSS entry (e.g. `@maizzle/tailwindcss` exports
+  // `.` -> index.css); fall back to `<pkg>/index.css` for packages whose main
+  // isn't CSS (e.g. `tailwindcss`, whose main is JS but exposes `./index.css`).
+  try {
+    const resolved = require.resolve(id, { paths: [base] })
+    if (resolved.endsWith('.css')) return resolved
+  } catch {
+    // not resolvable as-is; try the index.css subpath below
+  }
+  return require.resolve(`${id}/index.css`, { paths: [base] })
 }
 
 /** Loads a Tailwind v4 design system from CSS (defaults to the stock theme). */

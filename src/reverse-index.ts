@@ -102,7 +102,10 @@ function realDecls(css: string): Decl[] | null {
     if (colon === -1) continue
     const prop = part.slice(0, colon).trim().toLowerCase()
     if (!prop || isCustomProp(prop)) continue
-    decls.push({ prop, value: part.slice(colon + 1).trim() })
+    // Strip `!important` (the `@import "tailwindcss/utilities" important` layer, as
+    // used by email presets, marks every utility important — the input CSS won't).
+    const value = part.slice(colon + 1).replace(/\s*!\s*important\s*$/i, '').trim()
+    decls.push({ prop, value })
   }
   return decls
 }
