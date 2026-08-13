@@ -1,0 +1,47 @@
+# Keeps the committed embedded theme data (src/generated) in sync automatically.
+# On a PR that changes it (e.g. a Dependabot bump of tailwindcss), this regenerates
+# the data and commits it back onto the PR branch - so you never run `npm run
+# generate` by hand. You just review the diff and merge.
+
+name: regenerate
+
+on:
+  pull_request:
+
+# Write is needed to push the regenerated file back onto the PR branch.
+permissions:
+  contents: write
+
+concurrency:
+  group: regenerate-${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    # Only for branches in this repo (Dependabot's are). Never run a fork's code with a write token.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run generate
+
+      - name: Commit regenerated data if it changed
+        run: |
+          if git diff --quiet -- src/generated; then
+            echo "Embedded data already up to date."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/generated
+          git commit -m "chore: regenerate embedded theme data"
+          git push
