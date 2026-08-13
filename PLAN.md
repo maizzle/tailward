@@ -42,8 +42,19 @@ New `src/html.ts`, exported from `index.ts` AND as subpath `tailward/html` (keep
 - Serialize with `dom-serializer` (`encodeEntities: false`); preserve MSO conditional comments (they're comment nodes — skip, don't convert).
 - Tests: inline styles, `<style>` blocks with `@media`/`:hover`, authored responsive classes, entity/comment preservation. Reuse the `mailviews/components` fixtures for a smoke test (don't commit them; reference by absolute path in a skipped/local test, or add a tiny fixture).
 
-### 2. CLI
-New `src/cli.ts` + `bin` entry. Node-only (uses `node:fs`).
+### 2. CLI ✅ DONE
+Shipped `src/cli.ts` + `bin: { tailward }`. Hand-rolled arg parser (supports
+`--flag value` and `--flag=value`). Flags: `--html` (auto for `.html`/`.htm`),
+`--theme`, `--css`, `--rem`, `--important`, `--out`, `--json`, `--summary`,
+`--watch`, `-h`. CSS mode prints `@apply` blocks (or `--json`); HTML mode writes
+de-inlined HTML. Entry guarded by a realpath check (handles the npm bin symlink)
+so importing for tests doesn't run `main`. Pure helpers (`parseArgs`,
+`formatApply`, `summarize`) unit-tested; `main` tested in-process against temp
+files with stdout/stderr spied; `fs.watch` registration + entry guard are
+`v8 ignore`'d IO glue. 16 tests. Note: added `--json` (not in original sketch);
+default CSS output is `@apply` blocks.
+
+_Original plan:_ New `src/cli.ts` + `bin` entry. Node-only (uses `node:fs`).
 - `package.json`: `"bin": { "tailward": "./dist/cli.js" }`; add shebang `#!/usr/bin/env node`; ensure tsdown emits it (add to `entry`).
 - Args (tiny hand-rolled parser, no `citty`): `tailward [file]` (file or stdin), flags `--html` (use `convertHtml`), `--theme <file>`, `--css <file>`, `--rem <n>`, `--important`, `--out <file>`, `--watch`, `--summary`.
 - `.html`/`--html` → `convertHtml` → write HTML; else → `convert` → print per-selector classes (or `--apply` → `@apply` output).

@@ -17,6 +17,9 @@
       "types": "./dist/html.d.ts"
     }
   },
+  "bin": {
+    "tailward": "./dist/cli.js"
+  },
   "files": [
     "dist"
   ],

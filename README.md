@@ -98,6 +98,31 @@ It accepts every [converter option](#options) plus:
 tree-shake the HTML parser out of the core entry — though its parsing deps are
 pure-JS and edge-safe either way.
 
+## CLI
+
+Installing the package adds a `tailward` binary. It reads a file (or stdin) and
+prints `@apply` blocks; pass an `.html` file (or `--html`) to de-inline instead.
+
+```sh
+tailward styles.css                 # -> @apply blocks on stdout
+cat styles.css | tailward --json    # raw ConvertResult as JSON
+tailward email.html --important --out out.html
+tailward styles.css --theme brand.css --summary
+tailward styles.css --watch         # re-run on change
+```
+
+| Flag | Description |
+| --- | --- |
+| `--html` | De-inline an HTML document (auto-enabled for `.html`/`.htm`). |
+| `--theme <file>` | Convert against a custom `@theme` file (engine-free). |
+| `--css <file>` | Convert against full CSS via the Tailwind engine. |
+| `--rem <n>` | Pixel value of `1rem` (default 16). |
+| `--important` | Preserve `!important` as the v4 trailing bang. |
+| `--out <file>` | Write output to a file instead of stdout. |
+| `--json` | Output the raw conversion result as JSON (CSS mode). |
+| `--summary` | Print a conversion summary to stderr. |
+| `--watch` | Re-run when the input file changes. |
+
 ## What it handles
 
 - **Full stylesheets** — selectors, `@media` → responsive variants (`md:`), pseudo-classes/elements → variants (`hover:`, `before:`), `@supports` → `supports-[…]:`.
