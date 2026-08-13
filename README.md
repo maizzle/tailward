@@ -1,4 +1,4 @@
-# csstotailwind
+# tailward
 
 Convert regular CSS to [Tailwind CSS v4](https://tailwindcss.com) utility classes.
 
@@ -12,7 +12,7 @@ Convert regular CSS to [Tailwind CSS v4](https://tailwindcss.com) utility classe
 ## Install
 
 ```sh
-npm install csstotailwind
+npm install tailward
 ```
 
 `tailwindcss` is a peer dependency but is **only** needed if you use the `css` (engine) option — the stock and `theme` paths never import it.
@@ -20,7 +20,7 @@ npm install csstotailwind
 ## Usage
 
 ```ts
-import { CssToTailwind } from 'csstotailwind'
+import { CssToTailwind } from 'tailward'
 
 const converter = new CssToTailwind()
 
@@ -52,7 +52,7 @@ Construct the converter once and reuse it — the index is built on the first
 `convert()` call and cached. For a quick one-off there's also a helper:
 
 ```ts
-import { convertCss } from 'csstotailwind'
+import { convertCss } from 'tailward'
 
 const { nodes } = await convertCss('.a { display: block }')
 ```
