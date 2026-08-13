@@ -9,7 +9,7 @@ import { arbitraryUtility, arbitraryProperty } from './matchers/arbitrary.ts'
 import { expandBoxShorthand } from './matchers/shorthand.ts'
 import { decomposeTransform, decomposeFilter, decomposeGradient, type FunctionsContext } from './matchers/functions.ts'
 import { selectorVariants, mediaVariant, type VariantContext } from './variants.ts'
-import type { ConverterOptions, ConvertResult, ConvertedNode, Warning } from './types.ts'
+import type { ConversionSummary, ConverterOptions, ConvertResult, ConvertedNode, Warning } from './types.ts'
 
 /** A utility class carried through the pipeline with its importance flag. */
 interface Cls {
@@ -125,14 +125,16 @@ export class CssToTailwind {
     await this.init()
     const nodes: ConvertedNode[] = []
     const warnings: Warning[] = []
+    let totalDecls = 0
     for (const rule of parseStylesheet(css)) {
       const media = this.atRuleVariants(rule.atRules)
       for (const selector of rule.selectors) {
+        totalDecls += rule.decls.length
         const node = this.convertRule(rule.decls, selector, media, warnings)
         if (node) nodes.push(node)
       }
     }
-    return { nodes, warnings }
+    return { nodes, warnings, summary: summarize(nodes, warnings, totalDecls) }
   }
 
   /** Maps a rule's at-rule context into variant prefixes, or null if unsupported. */
@@ -469,6 +471,18 @@ function stripVariants(className: string): string {
 
 function stringifyDecl(decl: ParsedDecl): string {
   return `${decl.prop}: ${decl.value}${decl.important ? ' !important' : ''}`
+}
+
+/** Tallies conversion coverage. Each unconvertible declaration emits exactly one warning. */
+function summarize(nodes: ConvertedNode[], warnings: Warning[], totalDecls: number): ConversionSummary {
+  const unconvertible = warnings.reduce((n, w) => n + (w.type === 'unconvertible' ? 1 : 0), 0)
+  const converted = totalDecls - unconvertible
+  const arbitrary = nodes.reduce(
+    (n, node) => n + node.tailwindClasses.filter((c) => c.includes('[') || c.includes('(--')).length,
+    0,
+  )
+  const denom = converted + unconvertible
+  return { converted, unconvertible, arbitrary, coverage: denom === 0 ? 1 : Math.round((converted / denom) * 1e4) / 1e4 }
 }
 
 /** Normalizes a length token to a canonical pixel string (`0.25rem` -> `4px`), or null. */

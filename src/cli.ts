@@ -8,7 +8,8 @@ import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { CssToTailwind } from './converter.ts'
 import { convertHtml } from './html.ts'
-import type { ConvertResult, ConverterOptions } from './types.ts'
+import { toApply } from './index.ts'
+import type { ConversionSummary, ConvertResult, ConverterOptions } from './types.ts'
 
 const HELP = `tailward — convert CSS to Tailwind v4 utility classes
 
@@ -80,25 +81,10 @@ export function parseArgs(argv: string[]): CliArgs {
   return args
 }
 
-/** Renders conversion nodes as `@apply` CSS blocks. */
-export function formatApply(result: ConvertResult): string {
-  return result.nodes
-    .map((n) => {
-      const parts: string[] = []
-      if (n.tailwindClasses.length) parts.push(`@apply ${n.tailwindClasses.join(' ')};`)
-      if (n.complementary) parts.push(`${n.complementary};`)
-      return `${n.selector} { ${parts.join(' ')} }`
-    })
-    .join('\n')
-}
-
-/** One-line tally of a conversion for `--summary` (arbitrary = classes with a `[…]`). */
-export function summarize(result: ConvertResult): string {
-  const classes = result.nodes.flatMap((n) => n.tailwindClasses)
-  const arbitrary = classes.filter((c) => c.includes('[')).length
-  const unconvertible = result.warnings.filter((w) => w.type === 'unconvertible').length
-  const approximated = result.warnings.filter((w) => w.type === 'approximate-color').length
-  return `${result.nodes.length} selectors, ${classes.length} classes (${arbitrary} arbitrary), ${unconvertible} unconvertible, ${approximated} approximated`
+/** One-line tally of a conversion for `--summary`. */
+export function summaryLine(summary: ConversionSummary): string {
+  const { converted, unconvertible, arbitrary, coverage } = summary
+  return `${converted} converted, ${unconvertible} unconvertible, ${arbitrary} arbitrary — ${Math.round(coverage * 100)}% coverage`
 }
 
 /** Builds converter options from parsed args, reading `--theme`/`--css` files. */
@@ -128,8 +114,8 @@ async function runOnce(args: CliArgs): Promise<void> {
   } else {
     const result = await new CssToTailwind(options).convert(input)
     warnings = result.warnings
-    output = args.json ? JSON.stringify(result, null, 2) : formatApply(result)
-    if (args.summary) process.stderr.write(`${summarize(result)}\n`)
+    output = args.json ? JSON.stringify(result, null, 2) : toApply(result)
+    if (args.summary) process.stderr.write(`${summaryLine(result.summary)}\n`)
   }
 
   if (args.summary && isHtml) process.stderr.write(`${warnings.length} warnings\n`)

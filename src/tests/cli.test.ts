@@ -2,8 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { writeFileSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { parseArgs, formatApply, summarize, main } from '../cli.ts'
-import type { ConvertResult } from '../types.ts'
+import { parseArgs, summaryLine, main } from '../cli.ts'
 
 describe('parseArgs', () => {
   it('reads a positional file and boolean flags', () => {
@@ -33,29 +32,11 @@ describe('parseArgs', () => {
   })
 })
 
-describe('formatApply', () => {
-  it('emits @apply blocks with complementary CSS', () => {
-    const result: ConvertResult = {
-      nodes: [
-        { selector: '.a', tailwindClasses: ['flex', 'p-4'], complementary: '' },
-        { selector: '.b', tailwindClasses: [], complementary: 'mask-type: luminance' },
-      ],
-      warnings: [],
-    }
-    expect(formatApply(result)).toBe('.a { @apply flex p-4; }\n.b { mask-type: luminance; }')
-  })
-})
-
-describe('summarize', () => {
-  it('tallies selectors, classes, arbitrary, and warnings', () => {
-    const result: ConvertResult = {
-      nodes: [{ selector: '.a', tailwindClasses: ['flex', 'p-[3px]'], complementary: '' }],
-      warnings: [
-        { type: 'unconvertible', selector: '.a', declaration: 'x: y', message: '' },
-        { type: 'approximate-color', selector: '.a', declaration: 'c: #abc', message: '' },
-      ],
-    }
-    expect(summarize(result)).toBe('1 selectors, 2 classes (1 arbitrary), 1 unconvertible, 1 approximated')
+describe('summaryLine', () => {
+  it('formats a conversion summary', () => {
+    expect(summaryLine({ converted: 3, unconvertible: 1, arbitrary: 2, coverage: 0.75 })).toBe(
+      '3 converted, 1 unconvertible, 2 arbitrary — 75% coverage',
+    )
   })
 })
 
@@ -104,7 +85,7 @@ describe('main', () => {
     const { out, err } = capture()
     await main([css, '--out', outFile, '--summary'])
     expect(out.join('')).toBe('') // nothing on stdout when --out is used
-    expect(err.join('')).toContain('1 selectors, 1 classes')
+    expect(err.join('')).toContain('1 converted')
     expect(readFileSync(outFile, 'utf8')).toBe('.a { @apply block; }\n')
   })
 

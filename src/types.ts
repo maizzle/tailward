@@ -76,8 +76,21 @@ export interface Warning {
   message: string
 }
 
+export interface ConversionSummary {
+  /** Declarations that produced at least one utility class. */
+  converted: number
+  /** Declarations left as complementary CSS (no utility found). */
+  unconvertible: number
+  /** Emitted utilities that use an arbitrary value or property (`p-[13px]`, `[mask-type:…]`). */
+  arbitrary: number
+  /** `converted / (converted + unconvertible)`, or `1` when there was nothing to convert. */
+  coverage: number
+}
+
 export interface ConvertResult {
   nodes: ConvertedNode[]
   /** Non-fatal notes: approximated colors and declarations left unconverted. */
   warnings: Warning[]
+  /** Tally of how much of the input converted. */
+  summary: ConversionSummary
 }

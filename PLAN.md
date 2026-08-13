@@ -108,11 +108,16 @@ _Original plan:_ New `src/matchers/functions.ts`. Declaration-level converters r
 ### 5. Source positions (opt-in)
 - `css-parser` already walks offsets — track `start`/`end` char offsets (and compute line/col) on `ParsedDecl`/`ParsedRule` when `opts.positions` is set. Surface on result nodes. Enables editor "convert selection". Keep off by default (zero overhead).
 
-### 6. Output helpers
-- `toApply(result): string` → CSS with `@apply <classes>;` per selector. `toClassMap(result): Record<string,string>`. Small pure helpers in `index.ts`.
+### 6. Output helpers ✅ DONE
+`toApply(result)` (@apply rules per selector, complementary kept as raw CSS) and
+`toClassMap(result)` (`{ selector: 'classes' }`) exported from `index.ts`. The CLI
+reuses `toApply`.
 
-### 7. Conversion summary
-- Add `summary: { converted, arbitrary, unconvertible, coverage }` to `ConvertResult`, tallied during `convertRule` (count named vs arbitrary-bracket vs complementary). Cheap.
+### 7. Conversion summary ✅ DONE
+`summary: { converted, unconvertible, arbitrary, coverage }` on every
+`ConvertResult`, computed in `convert()` (unconvertible = count of `unconvertible`
+warnings; converted = totalDecls − unconvertible; arbitrary = emitted classes with
+`[`/`(--`; coverage rounded to 4dp). CLI `--summary` prints `summaryLine(summary)`.
 
 ### 8. Container queries
 - `variants.ts`/`convertRule`: handle `@container (min-width: N)` at-rule context → `@min-[Npx]:` / named container variant; extend `atRuleVariants` to accept `container`. Lower priority.

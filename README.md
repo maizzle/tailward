@@ -207,6 +207,12 @@ interface ConvertResult {
     declaration: string       // "color: #a1b2c3"
     message: string           // human-readable explanation
   }[]
+  summary: {
+    converted: number         // declarations that produced utilities
+    unconvertible: number     // declarations left as complementary CSS
+    arbitrary: number         // emitted utilities using an arbitrary value/property
+    coverage: number          // converted / (converted + unconvertible), 0–1
+  }
 }
 ```
 
@@ -229,6 +235,20 @@ One-shot convenience wrapper around `new CssToTailwind(options).convert(css)`.
 De-inlines a full HTML document — see [HTML — de-inline to classes](#html--de-inline-to-classes).
 Also available from the `tailward/html` subpath. `options` extends the converter
 options with `inline`, `styleRules`, and `keepStyleAttr`.
+
+### `toApply(result): string` · `toClassMap(result): Record<string, string>`
+
+Format a `ConvertResult`: `toApply` renders copy-pasteable `@apply` rules (one per
+selector, unconvertible declarations kept as raw CSS); `toClassMap` returns
+`{ selector: 'class list' }`.
+
+```ts
+import { convertCss, toApply, toClassMap } from 'tailward'
+
+const result = await convertCss('.a { display: flex; padding: 1rem }')
+toApply(result)    // ".a { @apply flex p-4; }"
+toClassMap(result) // { '.a': 'flex p-4' }
+```
 
 ### Options
 
