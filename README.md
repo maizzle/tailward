@@ -57,6 +57,47 @@ import { convertCss } from 'tailward'
 const { nodes } = await convertCss('.a { display: block }')
 ```
 
+## HTML — de-inline to classes
+
+`convertHtml` rewrites a whole HTML document: inline `style=""` attributes and
+`<style>` rules become Tailwind utility classes. Handy for de-inlining email
+HTML or migrating a static page.
+
+```ts
+import { convertHtml } from 'tailward' // or 'tailward/html' to keep bundles lean
+
+const { html, warnings } = await convertHtml(`
+  <style>
+    .btn:hover { color: #fb2c36 }
+    @media (min-width: 48rem) { .btn { display: flex } }
+  </style>
+  <a class="btn" style="margin: 8px; font-weight: 700">Go</a>
+`)
+// <a class="btn hover:text-red-500 md:flex m-2 font-bold">Go</a>
+```
+
+- Inline `style=""` → classes merged into `class`; the attribute is dropped
+  (unconvertible declarations stay behind in `style`, or keep it all with
+  `keepStyleAttr`).
+- `<style>` rules convert with their context baked into variants
+  (`@media` → `sm:`, `:hover` → `hover:`, `::before` → `before:`) and attach to
+  every element matching the rule's selector.
+- `@keyframes`, `@font-face`, `@import`, and any rule that can't be fully
+  converted or matched are preserved in a trimmed residual `<style>`.
+- Entities, comments, and Outlook (MSO) conditionals round-trip untouched.
+
+It accepts every [converter option](#options) plus:
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `inline` | `boolean` | `true` | Rewrite inline `style=""` attributes. |
+| `styleRules` | `'variants' \| 'residual' \| 'drop'` | `'variants'` | `variants`: convert `<style>` rules to classes on matching elements, keeping the rest as residual CSS. `residual`: leave every `<style>` untouched. `drop`: convert what maps, discard the rest. |
+| `keepStyleAttr` | `boolean` | `false` | Keep the original `style=""` alongside the emitted classes. |
+
+`convertHtml` is also exported from the `tailward/html` subpath so bundlers can
+tree-shake the HTML parser out of the core entry — though its parsing deps are
+pure-JS and edge-safe either way.
+
 ## What it handles
 
 - **Full stylesheets** — selectors, `@media` → responsive variants (`md:`), pseudo-classes/elements → variants (`hover:`, `before:`), `@supports` → `supports-[…]:`.
@@ -156,6 +197,12 @@ const { warnings } = await convertCss('.a { color: #a1b2c3 }', { colorThreshold:
 ### `convertCss(css, options?): Promise<ConvertResult>`
 
 One-shot convenience wrapper around `new CssToTailwind(options).convert(css)`.
+
+### `convertHtml(html, options?): Promise<{ html, warnings }>`
+
+De-inlines a full HTML document — see [HTML — de-inline to classes](#html--de-inline-to-classes).
+Also available from the `tailward/html` subpath. `options` extends the converter
+options with `inline`, `styleRules`, and `keepStyleAttr`.
 
 ### Options
 
