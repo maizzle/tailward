@@ -235,4 +235,48 @@ describe('CssToTailwind', () => {
     const { nodes } = await c2.convert('.a { animation-name: spin !important; }')
     expect(nodes[0].complementary).toContain('!important')
   })
+
+  describe('important option', () => {
+    it('drops !important by default', async () => {
+      expect(await classesFor('.a { color: #fb2c36 !important; }')).toEqual(['text-red-500'])
+    })
+
+    it('emits the v4 trailing bang when important is on', async () => {
+      const imp = new CssToTailwind({ important: true })
+      await imp.convert('.x{}')
+      const { nodes } = await imp.convert('.a { color: #fb2c36 !important; padding: 8px !important; }')
+      expect(nodes[0].tailwindClasses).toEqual(['p-2!', 'text-red-500!'])
+    })
+
+    it('bangs only the important declarations in a mixed rule', async () => {
+      const imp = new CssToTailwind({ important: true })
+      await imp.convert('.x{}')
+      const { nodes } = await imp.convert('.a { display: flex; color: #fb2c36 !important; }')
+      expect(nodes[0].tailwindClasses).toEqual(['flex', 'text-red-500!'])
+    })
+
+    it('keeps the bang outside variants', async () => {
+      const imp = new CssToTailwind({ important: true })
+      await imp.convert('.x{}')
+      const { nodes } = await imp.convert('@media (min-width: 48rem) { .a:hover { margin-top: -1rem !important; } }')
+      expect(nodes[0].tailwindClasses).toEqual(['md:hover:-mt-4!'])
+    })
+
+    it('bangs a fused text-size/leading utility', async () => {
+      const imp = new CssToTailwind({ important: true })
+      await imp.convert('.x{}')
+      const { nodes } = await imp.convert('.a { font-size: 20px !important; line-height: 20px !important; }')
+      expect(nodes[0].tailwindClasses).toEqual(['text-xl/5!'])
+    })
+
+    it('combines equal important longhands, but not mixed importance', async () => {
+      const imp = new CssToTailwind({ important: true })
+      await imp.convert('.x{}')
+      expect((await imp.convert('.a { padding-left: 24px !important; padding-right: 24px !important; }')).nodes[0].tailwindClasses).toEqual([
+        'px-6!',
+      ])
+      const mixed = await imp.convert('.a { padding-left: 24px !important; padding-right: 24px; }')
+      expect(mixed.nodes[0].tailwindClasses).toEqual(['pr-6', 'pl-6!'])
+    })
+  })
 })

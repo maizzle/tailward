@@ -39,6 +39,13 @@ export interface ConverterOptions {
    */
   canonicalize?: boolean
   /**
+   * Preserve `!important` from the source by emitting the v4 trailing-bang form
+   * (`color: red !important` -> `text-red-500!`, `sm:text-red-500!`). When `false`,
+   * importance is dropped and the utility is emitted plain.
+   * @default false
+   */
+  important?: boolean
+  /**
    * Largest spacing multiplier to emit as a scale utility. Lengths whose
    * multiplier exceeds it become arbitrary values instead (`width: 600px` ->
    * `w-[600px]` rather than `w-150`). Defaults to Tailwind's spacing-scale

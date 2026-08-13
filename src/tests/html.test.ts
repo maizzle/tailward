@@ -129,6 +129,11 @@ describe('convertHtml — fidelity', () => {
     )
   })
 
+  it('forwards the important option to the underlying conversion', async () => {
+    const { html } = await convertHtml('<div style="color:#fb2c36 !important">x</div>', { important: true })
+    expect(html).toBe('<div class="text-red-500!">x</div>')
+  })
+
   it('reports warnings from the underlying conversion', async () => {
     const { warnings } = await convertHtml('<div style="animation-timeline:view()">x</div>', {
       arbitrary: false,

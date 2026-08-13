@@ -10,6 +10,12 @@ import { expandBoxShorthand } from './matchers/shorthand.ts'
 import { selectorVariants, mediaVariant, type VariantContext } from './variants.ts'
 import type { ConverterOptions, ConvertResult, ConvertedNode, Warning } from './types.ts'
 
+/** A utility class carried through the pipeline with its importance flag. */
+interface Cls {
+  name: string
+  important: boolean
+}
+
 /** A single-declaration conversion: the class plus an optional approximation note. */
 interface SingleResult {
   cls: string
@@ -96,6 +102,7 @@ export class CssToTailwind {
       // the conventional range (incl. dynamic in-between steps like `p-13`), but
       // keep oversized one-offs (`width: 600px` -> `w-[600px]`) arbitrary.
       maxSpacingSteps: options.maxSpacingSteps ?? 96,
+      important: options.important ?? false,
       theme: options.theme,
       css: options.css,
       base: options.base,
@@ -155,27 +162,29 @@ export class CssToTailwind {
   ): ConvertedNode | null {
     const { base, variants: pseudoVariants } = selectorVariants(selector)
     const sel = base || selector
-    const classes: string[] = []
+    const items: Cls[] = []
     const complementary: string[] = []
-    let fontSizeCls: string | undefined
+    let fontSizeCls: Cls | undefined
     let fontSizeValue: string | undefined
-    let leadingCls: string | undefined
+    let leadingCls: Cls | undefined
     let lineHeightValue: string | undefined
 
     for (const decl of decls) {
       const prop = decl.prop.toLowerCase()
+      const important = this.options.important && decl.important
       // If the rule sits under an unsupported at-rule, nothing is convertible.
       const result = media === null ? { classes: [], notes: [] as string[] } : this.convertDeclaration(prop, decl.value)
       if (result.classes.length) {
+        const produced = result.classes.map((name) => ({ name, important }))
         // Remember the font-size / line-height classes so we can fuse them (below).
-        if (prop === 'font-size' && result.classes.length === 1 && result.classes[0].startsWith('text-')) {
-          fontSizeCls = result.classes[0]
+        if (prop === 'font-size' && produced.length === 1 && produced[0].name.startsWith('text-')) {
+          fontSizeCls = produced[0]
           fontSizeValue = decl.value.trim()
-        } else if (prop === 'line-height' && result.classes.length === 1 && result.classes[0].startsWith('leading-')) {
-          leadingCls = result.classes[0]
+        } else if (prop === 'line-height' && produced.length === 1 && produced[0].name.startsWith('leading-')) {
+          leadingCls = produced[0]
           lineHeightValue = decl.value.trim()
         }
-        classes.push(...result.classes)
+        items.push(...produced)
         for (const message of result.notes) {
           warnings.push({ type: 'approximate-color', selector: sel, declaration: stringifyDecl(decl), message })
         }
@@ -190,27 +199,33 @@ export class CssToTailwind {
       }
     }
 
-    if (classes.length === 0 && complementary.length === 0) return null
+    if (items.length === 0 && complementary.length === 0) return null
 
     // A v4 `text-<size>` utility already carries a default line-height, so drop a
     // matching line-height entirely (`text-sm`); only keep the `/N` shorthand when
     // it diverges from the active theme's default (`text-sm/6`). Then recombine
     // equal opposite longhands (`pl-6 pr-6` -> `px-6`, corner radii -> `rounded-t`).
-    let out = classes
+    let out = items
     if (fontSizeCls && leadingCls) {
-      const token = fontSizeCls.startsWith('text-') && !fontSizeCls.includes('[') ? fontSizeCls.slice('text-'.length) : undefined
+      const name = fontSizeCls.name
+      const token = name.startsWith('text-') && !name.includes('[') ? name.slice('text-'.length) : undefined
       const defaultLh = token ? this.index!.textLineHeights.get(token) : undefined
       const inputLh =
         lineHeightValue !== undefined ? absoluteLineHeight(lineHeightValue, fontSizeValue, this.options.remInPx) : null
       const matchesDefault = defaultLh !== undefined && inputLh !== null && inputLh === defaultLh
       out = matchesDefault
         ? out.filter((c) => c !== leadingCls) // text-<token> already sets this line-height
-        : [...out.filter((c) => c !== fontSizeCls && c !== leadingCls), `${fontSizeCls}/${leadingCls.slice('leading-'.length)}`]
+        : [
+            ...out.filter((c) => c !== fontSizeCls && c !== leadingCls),
+            { name: `${name}/${leadingCls.name.slice('leading-'.length)}`, important: fontSizeCls.important || leadingCls.important },
+          ]
     }
     out = combineDirectional(out)
 
     const prefix = [...(media ?? []), ...pseudoVariants].map((v) => `${v}:`).join('')
-    const prefixed = prefix ? out.map((c) => applyVariantPrefix(prefix, c)) : out
+    // v4 puts the important bang at the very end (`sm:text-red-500!`).
+    const named = out.map((c) => (c.important ? `${c.name}!` : c.name))
+    const prefixed = prefix ? named.map((c) => applyVariantPrefix(prefix, c)) : named
     const ordered = this.orderClasses(prefixed)
 
     return {
@@ -372,6 +387,7 @@ export class CssToTailwind {
   /** Reduces a class to its ordering key (root or static-class name). */
   private orderKey(className: string): string {
     let base = stripVariants(className)
+    if (base.endsWith('!')) base = base.slice(0, -1) // v4 important suffix
     if (base.startsWith('-')) base = base.slice(1)
     const parts = base.split('-')
     for (let n = parts.length; n >= 1; n--) {
@@ -416,21 +432,24 @@ function valueForRoot(cls: string, root: string): string | null {
   return null
 }
 
-function combineDirectional(classes: string[]): string[] {
+function combineDirectional(classes: Cls[]): Cls[] {
   const out = [...classes]
   let merged = true
   while (merged) {
     merged = false
     for (const [a, b, into] of COMBINE_RULES) {
-      const ai = out.findIndex((c) => valueForRoot(c, a) !== null)
+      const ai = out.findIndex((c) => valueForRoot(c.name, a) !== null)
       if (ai === -1) continue
-      const value = valueForRoot(out[ai], a)!
-      const bi = out.findIndex((c) => valueForRoot(c, b) === value)
+      const value = valueForRoot(out[ai].name, a)!
+      const important = out[ai].important
+      // Only merge opposite sides that share the same importance (`pl-6! pr-6!` -> `px-6!`,
+      // but a mixed `pl-6! pr-6` stays split — one class can't carry both).
+      const bi = out.findIndex((c) => c.important === important && valueForRoot(c.name, b) === value)
       if (bi === -1) continue
       const combined = value === '' ? into : `${into}-${value}`
       out.splice(Math.max(ai, bi), 1)
       out.splice(Math.min(ai, bi), 1)
-      out.push(combined)
+      out.push({ name: combined, important })
       merged = true
       break
     }

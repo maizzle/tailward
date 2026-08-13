@@ -215,6 +215,7 @@ options with `inline`, `styleRules`, and `keepStyleAttr`.
 | `arbitrary` | `boolean` | `true` | Emit arbitrary values when nothing matches; else keep as raw CSS. |
 | `colorThreshold` | `number` | `0.02` | Max OKLab distance to match a palette color; `0` = exact only. |
 | `canonicalize` | `boolean` | `true` | Prefer named functional utilities for bare numbers (`z-60` over `z-[60]`). |
+| `important` | `boolean` | `false` | Preserve `!important` as the v4 trailing bang (`text-red-500!`, `sm:text-red-500!`); otherwise dropped. |
 | `maxSpacingSteps` | `number` | `96` | Largest spacing multiplier reversed to a scale utility; larger lengths stay arbitrary (`600px` → `w-[600px]` not `w-150`). `Infinity` to reverse any multiple. |
 
 ## How it works

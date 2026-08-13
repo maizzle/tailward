@@ -50,8 +50,16 @@ New `src/cli.ts` + `bin` entry. Node-only (uses `node:fs`).
 - `--watch`: `fs.watch`, re-run on change.
 - Tests: spawn the built CLI on a temp file; assert stdout. Keep light.
 
-### 3. `!important` preservation
-Option `important?: boolean` (default `false`). `css-parser` already captures `decl.important`.
+### 3. `!important` preservation ✅ DONE
+Shipped: `important?: boolean` option (default `false`). Classes flow through the
+`convertRule` pipeline as `{ name, important }` items; the v4 trailing bang is
+appended per-class after fusion/combine, before the variant prefix
+(`sm:hover:-mt-4!`). `combineDirectional` only merges opposite sides of matching
+importance (mixed `pl-6! pr-6` stays split); fused `text-xl/7!` is important iff
+its size or leading was. `orderKey` strips a trailing `!` before ranking. Verified
+the v4 suffix syntax against the live engine. Flows through `convertHtml` too. 7 tests.
+
+_Original plan:_ Option `important?: boolean` (default `false`). `css-parser` already captures `decl.important`.
 - Thread per-declaration importance into `convertDeclaration`/`convertRule`. When `options.important && decl.important`, suffix that declaration's produced classes with `!` (v4 trailing-bang: `text-red-500!`, `sm:text-red-500!`, `text-xl/7!`).
 - Apply at the class level for THAT decl's classes only (not the whole rule) — track which classes came from important decls. Fusion/combine happen first, then append `!` to the resulting classes that trace to important decls (simplest: if the rule is entirely important, bang everything; else tag per-decl before fuse/combine and re-apply after).
 - Ordering: `orderKey`/`stripVariants` must ignore a trailing `!` (strip it before ranking).
