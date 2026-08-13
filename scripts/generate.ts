@@ -11,7 +11,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 import { loadDesignSystem } from '../src/design-system.ts'
-import { buildReverseIndex } from '../src/reverse-index.ts'
+import { buildReverseIndex, computeMediaVariants } from '../src/reverse-index.ts'
 import { CssToTailwind } from '../src/converter.ts'
 import type { StockTheme } from '../src/embedded.ts'
 
@@ -82,6 +82,7 @@ const data: StockTheme = {
   spacingRoots: [...index.spacingRoots],
   numericRoots: [...index.numericRoots],
   rootRanks: fromMap(index.rootRanks),
+  mediaVariants: fromMap(computeMediaVariants(ds, REM)),
 }
 
 const out = join(here, '../src/generated/stock-theme.ts')

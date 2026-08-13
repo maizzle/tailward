@@ -1,6 +1,33 @@
 import type { DesignSystem } from './design-system.ts'
 import { isColor } from './color.ts'
 import { resolveVars, evalCalc, normalizeLength, normalizeValue } from './normalize.ts'
+import { canonicalizeMedia } from './variants.ts'
+
+/**
+ * Builds a map of canonical media condition -> variant name by rendering each
+ * media-based variant (`sm:`, `dark:`, custom `@custom-variant`s...) and reading
+ * the `@media (…)` it produces. Lets input `@media` queries resolve to exact
+ * named variants (`max-width: 430px` -> `xs`).
+ */
+export function computeMediaVariants(ds: DesignSystem, remInPx: number): Map<string, string> {
+  const map = new Map<string, string>()
+  for (const variant of ds.getVariants()) {
+    let css: string | null
+    try {
+      css = ds.candidatesToCss([`${variant.name}:block`])[0]
+    } catch {
+      continue
+    }
+    if (!css) continue
+    // Accept only utilities whose CSS is an `@media (…) { … }` wrapper.
+    const flat = css.replace(/\s+/g, ' ').trim()
+    const m = /^@media([^{]+)\{/.exec(flat)
+    if (!m) continue
+    const key = canonicalizeMedia(m[1], remInPx)
+    if (key && !map.has(key)) map.set(key, variant.name)
+  }
+  return map
+}
 
 export interface ReverseIndex {
   /** `prop|normalizedValue` -> shortest Tailwind class producing exactly that declaration. */

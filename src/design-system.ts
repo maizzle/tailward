@@ -16,6 +16,7 @@ export interface DesignSystem {
     resolveValue(candidate: string | null, namespaces: string[]): string | null
   }
   getClassList(): [string, { modifiers: string[] }][]
+  getVariants(): { name: string }[]
   candidatesToCss(classes: string[]): (string | null)[]
   parseCandidate(candidate: string): readonly ParsedCandidate[]
   canonicalizeCandidates(candidates: string[]): string[]

@@ -20,6 +20,8 @@ export interface StockTheme {
   spacingRoots: string[]
   numericRoots: string[]
   rootRanks: Record<string, number>
+  /** Canonical media condition (`w<=430px`, `(prefers-color-scheme:dark)`) -> variant name. */
+  mediaVariants: Record<string, string>
 }
 
 const clean = (v: string) => v.replace(/\s+/g, ' ').trim()
@@ -97,4 +99,35 @@ export function parseThemeTokens(css: string): { vars: Record<string, string>; c
  */
 export function loadThemeIndex(themeCss: string, remInPx: number): ReverseIndex {
   return buildIndexFromTokens(stockTheme, remInPx, parseThemeTokens(themeCss))
+}
+
+/** Stock media-variant map (canonical condition -> variant name). */
+export function loadEmbeddedMediaVariants(): Map<string, string> {
+  return new Map(Object.entries(stockTheme.mediaVariants))
+}
+
+function pxKey(value: string, remInPx: number): string | null {
+  const m = /^(-?\d*\.?\d+)(px|rem|em)?$/.exec(value.trim())
+  if (!m) return null
+  return `${Math.round(parseFloat(m[1]) * ((m[2] ?? 'px') === 'px' ? 1 : remInPx))}px`
+}
+
+/**
+ * Media variants for a custom `@theme` (engine-free). Reuses the stock feature
+ * variants (dark/print/...) and rebuilds min-width breakpoints from the theme's
+ * `--breakpoint-*` tokens. Custom max-width `@custom-variant`s need the `css` path.
+ */
+export function themeMediaVariants(themeCss: string, remInPx: number): Map<string, string> {
+  const merged = { ...stockTheme.themeVars, ...parseThemeTokens(themeCss).vars }
+  const map = new Map<string, string>()
+  for (const [k, v] of Object.entries(stockTheme.mediaVariants)) {
+    if (!/^\(w[<>]/.test(k)) map.set(k, v) // keep non-width feature variants
+  }
+  for (const [name, value] of Object.entries(merged)) {
+    if (name.startsWith('--breakpoint-')) {
+      const px = pxKey(value, remInPx)
+      if (px) map.set(`(w>=${px})`, name.slice('--breakpoint-'.length))
+    }
+  }
+  return map
 }

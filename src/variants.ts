@@ -1,9 +1,39 @@
-import { normalizeLength } from './normalize.ts'
-
 export interface VariantContext {
-  /** rem value (e.g. `48rem`) -> breakpoint token (`md`). */
-  breakpoints: Map<string, string>
+  /** Canonical media condition (`w<=430px`, `(prefers-color-scheme:dark)`) -> variant name. */
+  mediaVariants: Map<string, string>
   remInPx: number
+}
+
+/** Normalizes a length token to whole pixels (`40rem` -> `640px`). */
+function toPx(value: string, remInPx: number): string {
+  const m = /^(-?\d*\.?\d+)(px|rem|em)?$/.exec(value.trim())
+  if (!m) return value.trim()
+  const n = parseFloat(m[1]) * ((m[2] ?? 'px') === 'px' ? 1 : remInPx)
+  return `${Math.round(n)}px`
+}
+
+/**
+ * Canonicalizes a media condition so equivalent forms compare equal:
+ * `min-width: 640px` and `width >= 40rem` both become `(w>=640px)`. Returns null
+ * for compound/unparseable conditions (they fall back to a faithful arbitrary form).
+ */
+export function canonicalizeMedia(params: string, remInPx: number): string | null {
+  const s = params
+    .toLowerCase()
+    .replace(/@media/g, ' ')
+    .replace(/\bscreen\b/g, ' ')
+    .replace(/\band\b/g, ' ')
+    .replace(/\s+/g, '')
+  if (!s) return null
+  if (!s.includes('(')) return s // bare feature, e.g. `print`
+  const width = (op: string, v: string) => `(w${op}${toPx(v, remInPx)})`
+  return s
+    .replace(/\(min-width:([^)]+)\)/g, (_, v) => width('>=', v))
+    .replace(/\(max-width:([^)]+)\)/g, (_, v) => width('<=', v))
+    .replace(/\(width>=([^)]+)\)/g, (_, v) => width('>=', v))
+    .replace(/\(width<=([^)]+)\)/g, (_, v) => width('<=', v))
+    .replace(/\(width<([^)]+)\)/g, (_, v) => width('<', v))
+    .replace(/\(width>([^)]+)\)/g, (_, v) => width('>', v))
 }
 
 const PSEUDO_VARIANTS: Record<string, string> = {
@@ -43,17 +73,6 @@ const PSEUDO_VARIANTS: Record<string, string> = {
   '::backdrop': 'backdrop',
 }
 
-const MEDIA_FEATURE_VARIANTS: Record<string, string> = {
-  'prefers-color-scheme:dark': 'dark',
-  'prefers-reduced-motion:reduce': 'motion-reduce',
-  'prefers-reduced-motion:no-preference': 'motion-safe',
-  'prefers-contrast:more': 'contrast-more',
-  'prefers-contrast:less': 'contrast-less',
-  'orientation:portrait': 'portrait',
-  'orientation:landscape': 'landscape',
-  'forced-colors:active': 'forced-colors',
-}
-
 /** Splits a selector into its base (`.foo`) and an ordered list of pseudo variants. */
 export function selectorVariants(selector: string): { base: string; variants: string[] } {
   const variants: string[] = []
@@ -71,28 +90,30 @@ export function selectorVariants(selector: string): { base: string; variants: st
   return { base, variants }
 }
 
-/** Maps an `@media` params string to a Tailwind variant, or null if unsupported. */
+/**
+ * Maps an `@media` params string to a Tailwind variant.
+ *
+ * Prefers an exact named variant (`max-width: 430px` -> `xs`) by comparing
+ * canonical conditions. Otherwise stays faithful: `min-width: N` -> `min-[N]`
+ * (equivalent), and anything else -> a `[@media(…)]` arbitrary variant that
+ * reproduces the query exactly — never `max-[N]`, whose `width < N` is NOT the
+ * same query as `max-width: N` (`width <= N`).
+ */
 export function mediaVariant(params: string, ctx: VariantContext): string | null {
-  const norm = params.replace(/\s+/g, '').replace(/^screenand/, '').replace(/^screen/, '')
+  const key = canonicalizeMedia(params, ctx.remInPx)
+  if (key && ctx.mediaVariants.has(key)) return ctx.mediaVariants.get(key)!
 
-  if (norm === 'print') return 'print'
+  const bare = params
+    .replace(/@media/gi, '')
+    .replace(/\bscreen\b/gi, '')
+    .replace(/\band\b/gi, ' ')
+    .replace(/\s+/g, '')
 
-  const feature = norm.replace(/^\(/, '').replace(/\)$/, '')
-  if (MEDIA_FEATURE_VARIANTS[feature]) return MEDIA_FEATURE_VARIANTS[feature]
+  // `min-[N]` compiles to `width >= N`, exactly `min-width: N` — safe to use.
+  const min = /^\(min-width:([^)]+)\)$/i.exec(bare)
+  if (min) return `min-[${min[1]}]`
 
-  const min = /\(min-width:([^)]+)\)/.exec(norm)
-  if (min && !norm.includes('max-width')) {
-    const rem = normalizeLength(min[1], ctx.remInPx)
-    const token = rem && ctx.breakpoints.get(rem)
-    return token ?? `min-[${min[1]}]`
-  }
-
-  const max = /\(max-width:([^)]+)\)/.exec(norm)
-  if (max && !norm.includes('min-width')) {
-    // Tailwind's max-* breakpoints target one step below a named token; emit the
-    // arbitrary form to stay correct rather than guessing the named token.
-    return `max-[${max[1]}]`
-  }
-
+  // Faithful arbitrary variant for any other single condition (incl. max-width).
+  if (bare.startsWith('(') && bare.endsWith(')')) return `[@media${bare}]`
   return null
 }

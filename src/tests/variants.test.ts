@@ -1,11 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import { selectorVariants, mediaVariant, type VariantContext } from '../variants.ts'
 
+// Mixed min-width breakpoints (stock-style) and max-width variants (email-style).
 const ctx: VariantContext = {
-  breakpoints: new Map([
-    ['40rem', 'sm'],
-    ['48rem', 'md'],
-    ['64rem', 'lg'],
+  mediaVariants: new Map([
+    ['(w>=768px)', 'md'],
+    ['(w<=600px)', 'sm'],
+    ['(w<=430px)', 'xs'],
+    ['(prefers-color-scheme:dark)', 'dark'],
+    ['print', 'print'],
   ]),
   remInPx: 16,
 }
@@ -33,22 +36,25 @@ describe('selectorVariants', () => {
 })
 
 describe('mediaVariant', () => {
-  it('maps a min-width breakpoint', () => {
+  it('maps a min-width breakpoint (rem or px, same result)', () => {
     expect(mediaVariant('(min-width: 48rem)', ctx)).toBe('md')
-  })
-  it('maps px min-width to a breakpoint', () => {
     expect(mediaVariant('(min-width: 768px)', ctx)).toBe('md')
   })
-  it('falls back to arbitrary min-width', () => {
+  it('maps a max-width query to its exact named variant', () => {
+    expect(mediaVariant('(max-width: 430px)', ctx)).toBe('xs')
+    expect(mediaVariant('(max-width: 600px)', ctx)).toBe('sm')
+  })
+  it('stays faithful for an unmatched max-width (never max-[N], which is width<N)', () => {
+    expect(mediaVariant('(max-width: 599px)', ctx)).toBe('[@media(max-width:599px)]')
+  })
+  it('uses min-[N] for an unmatched min-width (equivalent to min-width:N)', () => {
     expect(mediaVariant('(min-width: 900px)', ctx)).toBe('min-[900px]')
   })
-  it('maps prefers-color-scheme dark', () => {
+  it('maps feature queries', () => {
     expect(mediaVariant('(prefers-color-scheme: dark)', ctx)).toBe('dark')
-  })
-  it('maps print', () => {
     expect(mediaVariant('print', ctx)).toBe('print')
   })
-  it('maps max-width to arbitrary', () => {
-    expect(mediaVariant('(max-width: 500px)', ctx)).toBe('max-[500px]')
+  it('ignores a screen prefix', () => {
+    expect(mediaVariant('screen and (max-width: 430px)', ctx)).toBe('xs')
   })
 })

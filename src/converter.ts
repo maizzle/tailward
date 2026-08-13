@@ -27,28 +27,13 @@ interface LoadedSystem {
   ds?: DesignSystem
   index: ReverseIndex
   colorMatcher: ColorMatcher
-  breakpoints: Map<string, string>
+  mediaVariants: Map<string, string>
 }
 
 const systemCache = new Map<string, Promise<LoadedSystem>>()
 
-function breakpointsFrom(index: ReverseIndex, remInPx: number): Map<string, string> {
-  const bp = new Map<string, string>()
-  for (const [name, value] of index.vars) {
-    if (name.startsWith('--breakpoint-')) {
-      const rem = normalizeLength(value, remInPx)
-      if (rem) bp.set(rem, name.slice('--breakpoint-'.length))
-    }
-  }
-  return bp
-}
-
-function finalizeSystem(system: Omit<LoadedSystem, 'colorMatcher' | 'breakpoints'>, remInPx: number): LoadedSystem {
-  return {
-    ...system,
-    colorMatcher: createColorMatcher(system.index.palette),
-    breakpoints: breakpointsFrom(system.index, remInPx),
-  }
+function finalizeSystem(system: Omit<LoadedSystem, 'colorMatcher'>): LoadedSystem {
+  return { ...system, colorMatcher: createColorMatcher(system.index.palette) }
 }
 
 interface SystemOptions {
@@ -68,17 +53,22 @@ function loadSystem({ css, base, theme, remInPx }: SystemOptions): Promise<Loade
     cached =
       css !== undefined || base !== undefined
         ? (async () => {
-            const [{ loadDesignSystem }, { buildReverseIndex }] = await Promise.all([
+            const [{ loadDesignSystem }, { buildReverseIndex, computeMediaVariants }] = await Promise.all([
               import('./design-system.ts'),
               import('./reverse-index.ts'),
             ])
             const ds = await loadDesignSystem(css, base)
-            return finalizeSystem({ ds, index: buildReverseIndex(ds, remInPx) }, remInPx)
+            return finalizeSystem({
+              ds,
+              index: buildReverseIndex(ds, remInPx),
+              mediaVariants: computeMediaVariants(ds, remInPx),
+            })
           })()
         : import('./embedded.ts').then((m) =>
             finalizeSystem(
-              { index: theme ? m.loadThemeIndex(theme, remInPx) : m.loadEmbeddedIndex(remInPx) },
-              remInPx,
+              theme
+                ? { index: m.loadThemeIndex(theme, remInPx), mediaVariants: m.themeMediaVariants(theme, remInPx) }
+                : { index: m.loadEmbeddedIndex(remInPx), mediaVariants: m.loadEmbeddedMediaVariants() },
             ),
           )
     systemCache.set(key, cached)
@@ -115,7 +105,7 @@ export class CssToTailwind {
     this.ds = sys.ds
     this.index = sys.index
     this.colorMatcher = sys.colorMatcher
-    this.variantCtx = { breakpoints: sys.breakpoints, remInPx: this.options.remInPx }
+    this.variantCtx = { mediaVariants: sys.mediaVariants, remInPx: this.options.remInPx }
   }
 
   /** Converts a CSS string into Tailwind utilities, grouped per selector. */

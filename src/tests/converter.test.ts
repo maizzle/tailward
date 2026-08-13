@@ -131,10 +131,15 @@ describe('CssToTailwind', () => {
     expect(classes).toEqual(['supports-[display:grid]:flex'])
   })
 
-  it('keeps rules under unsupported media queries as complementary', async () => {
-    const { nodes } = await c.convert('@media (min-resolution: 2dppx) { .a { display: flex; } }')
-    expect(nodes[0].tailwindClasses).toEqual([])
-    expect(nodes[0].complementary).toContain('display: flex')
+  it('represents an unnamed media query faithfully as an arbitrary variant', async () => {
+    const classes = await classesFor('@media (min-resolution: 2dppx) { .a { display: flex; } }')
+    expect(classes).toEqual(['[@media(min-resolution:2dppx)]:flex'])
+  })
+
+  it('maps a max-width query to a faithful arbitrary variant (not max-[N])', async () => {
+    // Stock theme has no max-width named variants; 599px must stay width<=599.
+    const classes = await classesFor('@media (max-width: 599px) { .a { display: flex; } }')
+    expect(classes).toEqual(['[@media(max-width:599px)]:flex'])
   })
 
   it('keeps rules under unsupported at-rules as complementary', async () => {
