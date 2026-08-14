@@ -81,6 +81,7 @@ const data: StockTheme = {
   colorRoots: fromMap(index.colorRoots),
   spacingRoots: [...index.spacingRoots],
   numericRoots: [...index.numericRoots],
+  negativeNumericRoots: [...index.negativeNumericRoots],
   rootRanks: fromMap(index.rootRanks),
   mediaVariants: fromMap(computeMediaVariants(ds, REM)),
 }

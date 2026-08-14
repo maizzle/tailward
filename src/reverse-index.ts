@@ -48,6 +48,8 @@ export interface ReverseIndex {
   spacingBaseRem: number
   /** Roots that accept a bare integer value (`z` -> `z-60`, `order` -> `order-13`). */
   numericRoots: Set<string>
+  /** Roots whose bare integer also accepts a negative sign (`z` -> `-z-1`, `order` -> `-order-1`). */
+  negativeNumericRoots: Set<string>
   /**
    * Utility root (or static class name) -> ordinal position in Tailwind's class
    * order. Lets us sort output without the engine (`getClassOrder`).
@@ -371,31 +373,37 @@ export function buildReverseIndex(ds: DesignSystem, remInPx: number): ReverseInd
     if (!valid) propToRoot.delete(prop)
   })
 
-  const numericRoots = computeNumericRoots(ds, names)
+  const { numeric: numericRoots, negative: negativeNumericRoots } = computeNumericRoots(ds, names)
   const rootRanks = computeRootRanks(ds, names)
 
   return {
     decls, propToRoot, colorRoots, palette, textSizes,
     textLineHeights: collectTextLineHeights(vars, remInPx),
-    spacingRoots, spacingBaseRem, numericRoots, rootRanks, vars,
+    spacingRoots, spacingBaseRem, numericRoots, negativeNumericRoots, rootRanks, vars,
   }
 }
 
-/** Finds roots that accept a bare integer value (probing `root-97`). */
-function computeNumericRoots(ds: DesignSystem, names: string[]): Set<string> {
+/**
+ * Finds roots that accept a bare integer value (probing `root-97`), and the
+ * subset that also accepts a negative sign (probing `-root-97`) — `z`/`order`
+ * take `-z-1`, but `line-clamp`/`columns` reject a negative.
+ */
+function computeNumericRoots(ds: DesignSystem, names: string[]): { numeric: Set<string>; negative: Set<string> } {
   const roots = new Set<string>()
   for (const name of names) {
     const r = utilityRoot(ds, name)
     if (r && !r.startsWith('-')) roots.add(r)
   }
   const list = [...roots]
-  const css = ds.candidatesToCss(list.map((r) => `${r}-97`))
+  const posCss = ds.candidatesToCss(list.map((r) => `${r}-97`))
+  const negCss = ds.candidatesToCss(list.map((r) => `-${r}-97`))
   const numeric = new Set<string>()
+  const negative = new Set<string>()
   list.forEach((r, i) => {
-    const c = css[i]
-    if (c && realDecls(c)?.length) numeric.add(r)
+    if (posCss[i] && realDecls(posCss[i])?.length) numeric.add(r)
+    if (negCss[i] && realDecls(negCss[i])?.length) negative.add(r)
   })
-  return numeric
+  return { numeric, negative }
 }
 
 /** Maps each root / static class to its ordinal in Tailwind's class order. */

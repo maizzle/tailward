@@ -48,6 +48,7 @@ describe('embedded stock theme === live engine', () => {
       'color: #ff8800', 'background-color: #123456', 'padding: 13px', 'width: 600px',
       'z-index: 60', 'font-size: 20px', 'padding: 0 24px', 'text-decoration: none',
       'line-height: 1.5', 'border-radius: 8px', 'margin: 12px 0 0', 'gap: 5rem',
+      'z-index: -1', 'order: -13', 'grid-column-start: -2', 'columns: 3',
     ]
     for (const decl of probes) {
       const [a, b] = await Promise.all([
