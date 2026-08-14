@@ -187,6 +187,24 @@ describe('CssToTailwind', () => {
     expect(await classesFor('.a { padding: 0 24px; }')).toEqual(['px-6', 'py-0'])
   })
 
+  it('collapses full-shorthand groups (size, gap, inset, overscroll)', async () => {
+    expect(await classesFor('.a { width: 1rem; height: 1rem; }')).toEqual(['size-4'])
+    expect(await classesFor('.a { column-gap: 1rem; row-gap: 1rem; }')).toEqual(['gap-4'])
+    expect(await classesFor('.a { top: 1rem; right: 1rem; bottom: 1rem; left: 1rem; }')).toEqual(['inset-4'])
+    expect(await classesFor('.a { top: 1rem; bottom: 1rem; }')).toEqual(['inset-y-4'])
+    expect(await classesFor('.a { left: 1rem; right: 1rem; }')).toEqual(['inset-x-4'])
+    expect(await classesFor('.a { overscroll-behavior-x: contain; overscroll-behavior-y: contain; }')).toEqual([
+      'overscroll-contain',
+    ])
+    // Different values don't merge.
+    expect(await classesFor('.a { width: 1rem; height: 2rem; }')).toEqual(['h-8', 'w-4'])
+  })
+
+  it('does not merge width/height 100vw/100vh into the non-existent size-screen', async () => {
+    // `w-screen` is 100vw and `h-screen` is 100vh — `size-screen` isn't equivalent.
+    expect(await classesFor('.a { width: 100vw; height: 100vh; }')).toEqual(['h-screen', 'w-screen'])
+  })
+
   it('maps @supports to a supports variant', async () => {
     const classes = await classesFor('@supports (display: grid) { .a { display: flex; } }')
     expect(classes).toEqual(['supports-[display:grid]:flex'])
