@@ -574,6 +574,10 @@ function lengthToPx(value: string, remInPx: number): string | null {
 const COMBINE_RULES: [string, string, string][] = [
   ['pt', 'pb', 'py'], ['pl', 'pr', 'px'], ['px', 'py', 'p'],
   ['mt', 'mb', 'my'], ['ml', 'mr', 'mx'], ['mx', 'my', 'm'],
+  ['top', 'bottom', 'inset-y'], ['left', 'right', 'inset-x'], ['inset-x', 'inset-y', 'inset'],
+  ['w', 'h', 'size'],
+  ['gap-x', 'gap-y', 'gap'],
+  ['overscroll-x', 'overscroll-y', 'overscroll'],
   ['rounded-tl', 'rounded-tr', 'rounded-t'], ['rounded-bl', 'rounded-br', 'rounded-b'],
   ['rounded-tl', 'rounded-bl', 'rounded-l'], ['rounded-tr', 'rounded-br', 'rounded-r'],
   ['rounded-t', 'rounded-b', 'rounded'], ['rounded-l', 'rounded-r', 'rounded'],
@@ -595,6 +599,9 @@ function combineDirectional(classes: Cls[]): Cls[] {
       const ai = out.findIndex((c) => valueForRoot(c.name, a) !== null)
       if (ai === -1) continue
       const value = valueForRoot(out[ai].name, a)!
+      // `w-screen`+`h-screen` must not merge: `w-screen` is 100vw but `h-screen`
+      // is 100vh, so `size-screen` isn't equivalent (and isn't a real utility).
+      if (into === 'size' && value === 'screen') continue
       const important = out[ai].important
       // Only merge opposite sides that share the same importance (`pl-6! pr-6!` -> `px-6!`,
       // but a mixed `pl-6! pr-6` stays split — one class can't carry both).
