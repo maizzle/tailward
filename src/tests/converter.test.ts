@@ -90,6 +90,20 @@ describe('CssToTailwind', () => {
   it('collapses arbitrary utilities into dynamic named ones', async () => {
     expect(await classesFor('.a { z-index: 60; }')).toEqual(['z-60'])
     expect(await classesFor('.a { order: 13; }')).toEqual(['order-13'])
+    expect(await classesFor('.a { z-index: 1; }')).toEqual(['z-1'])
+  })
+
+  it('canonicalizes negative bare integers on sign-accepting roots', async () => {
+    // `-z-1` compiles to `z-index: -1`; roots that reject a sign stay arbitrary.
+    expect(await classesFor('.a { z-index: -1; }')).toEqual(['-z-1'])
+    expect(await classesFor('.a { order: -13; }')).toEqual(['-order-13'])
+    expect(await classesFor('.a { grid-column-start: -2; }')).toEqual(['-col-start-2'])
+  })
+
+  it('can opt out of negative canonicalization too', async () => {
+    const c2 = new CssToTailwind({ canonicalize: false })
+    const { nodes } = await c2.convert('.a { z-index: -1; }')
+    expect(nodes[0].tailwindClasses).toEqual(['z-[-1]'])
   })
 
   it('keeps arbitrary values that have no named equivalent', async () => {

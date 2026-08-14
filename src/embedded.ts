@@ -19,6 +19,7 @@ export interface StockTheme {
   colorRoots: Record<string, string>
   spacingRoots: string[]
   numericRoots: string[]
+  negativeNumericRoots: string[]
   rootRanks: Record<string, number>
   /** Canonical media condition (`w<=430px`, `(prefers-color-scheme:dark)`) -> variant name. */
   mediaVariants: Record<string, string>
@@ -69,6 +70,7 @@ export function buildIndexFromTokens(
     spacingRoots: new Set(data.spacingRoots),
     spacingBaseRem,
     numericRoots: new Set(data.numericRoots),
+    negativeNumericRoots: new Set(data.negativeNumericRoots),
     rootRanks: new Map(Object.entries(data.rootRanks)),
     vars,
   }

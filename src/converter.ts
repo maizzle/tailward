@@ -439,11 +439,16 @@ export class CssToTailwind {
   private arbitraryUtilityFor(root: string, prop: string, value: string): string | null {
     if (!this.options.arbitrary) return null
     // Prefer a named functional utility for bare-number values (`z-index: 60` ->
-    // `z-60`, `order: 13` -> `order-13`), gated by the set of numeric roots so we
-    // never emit an invalid class (works without the engine).
-    if (this.options.canonicalize && /^\d+$/.test(value) && this.index!.numericRoots.has(root)) {
-      const named = `${root}-${value}`
-      if (this.verify(named, prop, value)) return named
+    // `z-60`, `order: 13` -> `order-13`, `z-index: -1` -> `-z-1`), gated by the
+    // set of numeric roots (and, for negatives, the roots that accept a sign) so
+    // we never emit an invalid class (works without the engine).
+    if (this.options.canonicalize && /^-?\d+$/.test(value)) {
+      const negative = value[0] === '-'
+      const roots = negative ? this.index!.negativeNumericRoots : this.index!.numericRoots
+      if (roots.has(root)) {
+        const named = negative ? `-${root}-${value.slice(1)}` : `${root}-${value}`
+        if (this.verify(named, prop, value)) return named
+      }
     }
     const candidate = arbitraryUtility(root, value)
     if (this.verify(candidate, prop, value)) return candidate
