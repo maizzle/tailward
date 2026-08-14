@@ -1,6 +1,6 @@
 {
   "name": "tailward",
-  "version": "0.1.2",
+  "version": "1.0.0",
   "description": "Convert regular CSS to Tailwind CSS v4 utility classes.",
   "license": "MIT",
   "type": "module",
