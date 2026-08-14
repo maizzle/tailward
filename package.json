@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Convert regular CSS to Tailwind CSS v4 utility classes.",
   "license": "MIT",
+  "repository": "https://github.com/maizzle/tailward",
   "type": "module",
   "publishConfig": {
     "access": "public"
