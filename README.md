@@ -15,7 +15,7 @@
 
 Tailward converts regular CSS to Tailwind CSS 4 utility classes.
 
-Give it a declaration, a rule, or a whole stylesheet and you get back the utility classes that produce the same result - ready to drop straight into your markup.
+Give it a declaration, a rule, or a whole stylesheet and you get back the utility classes that produce the same result, ready to drop straight into your markup.
 
 It's handy when you're moving an existing project over to Tailwind, or turning inlined HTML back into clean, class-based templates, without redoing all that styling by hand.
 
@@ -29,7 +29,7 @@ Runs on Node 18+ or a modern edge runtime.
 - [CLI](#cli)
 - [What it converts](#what-it-converts)
 - [De-inlining HTML](#de-inlining-html)
-- [Themes](#themes)
+- [Matching your Tailwind theme](#matching-your-tailwind-theme)
 
 ## Installation
 
@@ -82,7 +82,17 @@ const { nodes } = await convertCss('.a { display: block }')
 
 ### `new CssToTailwind(options?)`
 
-### `converter.convert(css): Promise<ConvertResult>`
+Creates a converter you can reuse. The utility index builds on the first `convert()` call and is cached after that, so construct it once and keep it around.
+
+- `options` - any of the [Options](#options) below
+
+### `converter.convert(css)`
+
+Converts a stylesheet.
+
+- `css` - the CSS to convert, as a string.
+
+Returns a `ConvertResult`:
 
 ```ts
 interface ConvertResult {
@@ -108,7 +118,7 @@ interface ConvertResult {
 
 With `{ positions: true }`, each node also carries a `position` of `{ start, end, line, column }`, mapping the rule back to the input for editor "convert selection" integrations. It's off by default.
 
-`warnings` surfaces what the conversion glossed over: colors matched to a *near* palette token rather than an exact one, and declarations left unconverted.
+`warnings` tells you where the conversion wasn't exact: colors matched to a *near* palette token instead of an exact one, and declarations it couldn't convert at all.
 
 ```ts
 const { warnings } = await convertCss('.a { color: #a1b2c3 }', { colorThreshold: 0.2 })
@@ -116,17 +126,30 @@ const { warnings } = await convertCss('.a { color: #a1b2c3 }', { colorThreshold:
 //    message: 'approximated #a1b2c3 to text-mist-400 (ΔE 0.039)' }]
 ```
 
-### `convertCss(css, options?): Promise<ConvertResult>`
+### `convertCss(css, options?)`
 
-A one-shot wrapper around `new CssToTailwind(options).convert(css)`.
+One-shot version of the above, `new CssToTailwind(options).convert(css)` in a single call.
 
-### `convertHtml(html, options?): Promise<{ html, warnings }>`
+- `css` - the CSS to convert, as a string
+- `options` - any of the [Options](#options) below
 
-De-inlines a full HTML document. See [De-inlining HTML](#de-inlining-html) above. Also available from the `tailward/html` subpath. `options` extends the converter options with `styleAttributes`, `styleRules`, and `keepStyleAttributes`.
+Returns the same `ConvertResult` as `convert()`.
 
-### `toApply(result)` and `toClassMap(result)`
+### `convertHtml(html, options?)`
 
-Two ways to format a `ConvertResult`. `toApply` renders copy-pasteable `@apply` rules (one per selector, with unconvertible declarations kept as raw CSS); `toClassMap` returns `{ selector: 'class list' }`.
+[De-inlines](#de-inlining-html) a full HTML document, turning its inline styles and `<style>` rules into utility classes. Also available from the `tailward/html` subpath.
+
+- `html` - the HTML document, as a string
+- `options` - the [Options](#options) below, plus `styleAttributes`, `styleRules`, and `keepStyleAttributes`
+
+Returns `{ html, warnings }` - the rewritten markup and the same warnings `convertCss` produces.
+
+### Formatting the result
+
+Two helpers take a `ConvertResult` and give you something you can drop straight into a project:
+
+- `toApply(result)` renders copy-pasteable `@apply` rules, one per selector, keeping any unconvertible declarations as raw CSS.
+- `toClassMap(result)` returns a plain `{ selector: 'class list' }` map.
 
 ```ts
 import { convertCss, toApply, toClassMap } from 'tailward'
@@ -181,17 +204,6 @@ const { html } = await convertHtml(
 )
 // <a class="p-8 text-[#f9323d]">Go</a>
 ```
-
-### Regenerating
-
-The pregenerated index is committed and pinned to a `tailwindcss` version. After bumping `tailwindcss`:
-
-```sh
-npm run generate
-```
-
-`stock-theme.test.ts` asserts the pregenerated output matches the live engine across every indexed declaration, so CI fails if the data goes stale.
-
 
 ## CLI
 
@@ -275,9 +287,9 @@ It accepts every [converter option](#options), plus these:
 
 `convertHtml` is also exported from the `tailward/html` subpath, so bundlers can tree-shake the HTML parser out of the core entry. Its parsing deps are pure-JS and edge-safe either way.
 
-## Themes
+## Matching your Tailwind theme
 
-There are three ways to tell Tailward which theme to convert against:
+The classes you get back depend on the theme Tailward converts against - if your project customizes colors or spacing, that's how a brand color comes back as `bg-brand` instead of `bg-[oklch(...)]`. There are three ways to tell it which theme to use:
 
 | You pass | Runs on | Uses the engine? | Use it for |
 | --- | --- | --- | --- |
